@@ -172,7 +172,35 @@ class TestResolver(unittest.TestCase):
                 api_key="KEY123",
             )
         self.assertEqual(result, expected)
-        mock_api.assert_called_once_with("FILE123", api_key="KEY123")
+        mock_api.assert_called_once_with("FILE123", api_key="KEY123", resource_key=None)
+
+    def test_resolve_via_http_propagates_resourcekey_and_fetches_html_title_fallback(self) -> None:
+        direct_url = (
+            "https://drive.usercontent.google.com/download"
+            "?id=FILE123&export=download&resourcekey=0-Rk123"
+        )
+        bin_resp = _FakeResponse(
+            url=direct_url,
+            headers={"Content-Type": "video/mp4"},
+        )
+        view_html = (
+            "<html><head><title>Charla Python - Google Drive</title></head><body></body></html>"
+        ).encode("utf-8")
+        view_resp = _FakeResponse(
+            url="https://drive.google.com/file/d/FILE123/view?usp=sharing&resourcekey=0-Rk123",
+            headers={"Content-Type": "text/html; charset=utf-8"},
+            body=view_html,
+        )
+
+        with patch("drive_vlc.resolver.build_opener") as mock_opener_cls:
+            mock_opener_cls.return_value.open.side_effect = [bin_resp, view_resp]
+            result = resolve_via_http("FILE123", resource_key="0-Rk123")
+
+        self.assertEqual(result.title, "Charla Python")
+        first_req = mock_opener_cls.return_value.open.call_args_list[0].args[0]
+        self.assertIn("resourcekey=0-Rk123", first_req.full_url)
+        second_req = mock_opener_cls.return_value.open.call_args_list[1].args[0]
+        self.assertIn("resourcekey=0-Rk123", second_req.full_url)
 
 
 if __name__ == "__main__":

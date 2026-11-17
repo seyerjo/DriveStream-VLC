@@ -1,6 +1,6 @@
 import unittest
 
-from drive_vlc.drive_url import DriveUrlError, build_view_url, extract_file_id
+from drive_vlc.drive_url import DriveUrlError, build_view_url, extract_drive_link, extract_file_id
 from drive_vlc.i18n import set_active_language
 
 
@@ -45,6 +45,16 @@ class TestDriveUrl(unittest.TestCase):
             build_view_url("1AbCdEfGhIjKlMnOpQrStUvWxYz"),
             "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/view?usp=sharing",
         )
+        self.assertEqual(
+            build_view_url("1AbCdEfGhIjKlMnOpQrStUvWxYz", resource_key="0-RkTest_123"),
+            "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/view?usp=sharing&resourcekey=0-RkTest_123",
+        )
+
+    def test_extracts_legacy_resourcekey(self) -> None:
+        url = "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/view?usp=sharing&resourcekey=0-AbCd_99"
+        info = extract_drive_link(url)
+        self.assertEqual(info.file_id, "1AbCdEfGhIjKlMnOpQrStUvWxYz")
+        self.assertEqual(info.resource_key, "0-AbCd_99")
 
 
 if __name__ == "__main__":

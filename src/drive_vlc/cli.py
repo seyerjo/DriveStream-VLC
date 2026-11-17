@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 
 from drive_vlc.config import ConfigError, load_config
-from drive_vlc.drive_url import DriveUrlError, extract_file_id
+from drive_vlc.drive_url import DriveUrlError, extract_drive_link
 from drive_vlc.i18n import (
     SUPPORTED_LANGUAGES,
     detect_system_language,
@@ -166,12 +166,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         config = load_config()
-        file_id = extract_file_id(args.url_or_id)
+        link_info = extract_drive_link(args.url_or_id)
         resolved = resolve_drive_stream(
-            file_id,
+            link_info.file_id,
             method=args.method,
             yt_dlp_bin=config.yt_dlp_bin,
             api_key=config.api_key,
+            resource_key=link_info.resource_key,
         )
     except (ConfigError, DriveUrlError, ResolutionError) as exc:
         logger.error("%s", exc)

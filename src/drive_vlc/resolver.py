@@ -67,20 +67,23 @@ class ResolvedStream:
 
 
 class _DownloadFormParser(HTMLParser):
-    """Parses the virus-scan confirmation form and filename from Drive HTML."""
+    """Parses the virus-scan confirmation form and title candidates from Drive HTML."""
 
     def __init__(self) -> None:
-        """Initializes parser state for form inputs and filename extraction."""
+        """Initializes parser state for form inputs, filename link, and HTML title."""
         super().__init__()
         self.in_target_form = False
         self.form_action: str | None = None
         self.form_inputs: dict[str, str] = {}
         self.in_name_span = False
         self.in_name_link = False
+        self.in_title = False
         self.filename_parts: list[str] = []
+        self.title_parts: list[str] = []
+        self.og_title: str | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        """Processes HTML opening tags to locate the download form and title link.
+        """Processes HTML opening tags to locate the download form and title metadata.
 
         Args:
             tag (str): Lowercase or raw HTML tag name.
@@ -104,6 +107,12 @@ class _DownloadFormParser(HTMLParser):
             self.in_name_span = True
         elif tag_l == "a" and self.in_name_span:
             self.in_name_link = True
+        elif tag_l == "title":
+            self.in_title = True
+        elif tag_l == "meta" and attr_map.get("property", "").lower() == "og:title":
+            content = attr_map.get("content", "").strip()
+            if content:
+                self.og_title = content
 
     def handle_endtag(self, tag: str) -> None:
         """Processes HTML closing tags to reset active parser sections.
@@ -118,15 +127,19 @@ class _DownloadFormParser(HTMLParser):
             self.in_name_link = False
         elif tag_l == "span" and self.in_name_span:
             self.in_name_span = False
+        elif tag_l == "title" and self.in_title:
+            self.in_title = False
 
     def handle_data(self, data: str) -> None:
-        """Collects character data inside the filename link element.
+        """Collects character data inside the filename link and HTML title elements.
 
         Args:
             data (str): Text content encountered within the current tag.
         """
         if self.in_name_link:
             self.filename_parts.append(data)
+        elif self.in_title:
+            self.title_parts.append(data)
 
 
 class _CaptureRedirectHandler(HTTPRedirectHandler):
@@ -302,12 +315,77 @@ def _probe_direct_stream(
         raise ResolutionError(t("resolver.error.network", reason=exc.reason)) from exc
 
 
-def resolve_via_http(file_id: str, timeout: int = DEFAULT_TIMEOUT) -> ResolvedStream:
+def _clean_html_title(raw_title: str | None) -> str | None:
+    """Normalizes a Drive HTML title/og:title and discards generic boilerplate titles.
+
+    Args:
+        raw_title (str | None): Raw title text extracted from HTML metadata.
+
+    Returns:
+        str | None: Cleaned video filename/title or ``None`` if generic/empty.
+    """
+    if not raw_title:
+        return None
+    cleaned = unescape(raw_title).strip()
+    if cleaned.endswith(" - Google Drive"):
+        cleaned = cleaned[: -len(" - Google Drive")].strip()
+    generic = {
+        "",
+        "google drive",
+        "google drive - virus scan warning",
+        "virus scan warning",
+        "sign in - google accounts",
+    }
+    if cleaned.lower() in generic:
+        return None
+    return cleaned
+
+
+def _fetch_view_page_title(
+    file_id: str,
+    *,
+    resource_key: str | None = None,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> str | None:
+    """Fetches the Drive viewer page to extract a fallback title when Content-Disposition is absent.
+
+    Args:
+        file_id (str): Google Drive file ID.
+        resource_key (str | None): Optional legacy resourcekey parameter.
+        timeout (int): Network timeout in seconds.
+
+    Returns:
+        str | None: Extracted title if available, otherwise ``None``.
+    """
+    view_url = build_view_url(file_id, resource_key=resource_key)
+    opener = build_opener()
+    req = Request(view_url, headers={"User-Agent": USER_AGENT}, method="GET")
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            content_type = (resp.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
+            if content_type != "text/html":
+                return None
+            html_text = resp.read(131_072).decode("utf-8", errors="replace")
+    except (HTTPError, URLError, OSError):
+        return None
+
+    parser = _DownloadFormParser()
+    parser.feed(html_text)
+    return _clean_html_title(parser.og_title) or _clean_html_title("".join(parser.title_parts))
+
+
+def resolve_via_http(
+    file_id: str,
+    timeout: int = DEFAULT_TIMEOUT,
+    *,
+    resource_key: str | None = None,
+) -> ResolvedStream:
     """Resolves a direct streaming URL via unauthenticated HTTP requests.
 
     Args:
         file_id (str): Google Drive file ID.
         timeout (int): Network timeout in seconds per request.
+        resource_key (str | None): Optional legacy resourcekey parameter.
 
     Returns:
         ResolvedStream: Verified direct streaming URL and metadata.
@@ -316,9 +394,16 @@ def resolve_via_http(file_id: str, timeout: int = DEFAULT_TIMEOUT) -> ResolvedSt
         PrivateOrBlockedError: If the file requires authentication or is forbidden.
         ResolutionError: If no direct non-HTML stream could be confirmed.
     """
+    extra_params = {"resourcekey": resource_key} if resource_key else {}
     candidates = [
-        f"https://drive.google.com/uc?export=download&id={file_id}",
-        f"https://drive.usercontent.google.com/download?id={file_id}&export=download&confirm=t",
+        _build_url_with_params(
+            "https://drive.google.com/uc",
+            {"export": "download", "id": file_id, **extra_params},
+        ),
+        _build_url_with_params(
+            "https://drive.usercontent.google.com/download",
+            {"id": file_id, "export": "download", "confirm": "t", **extra_params},
+        ),
     ]
     extracted_title: str | None = None
     last_error: str | None = None
@@ -339,10 +424,13 @@ def resolve_via_http(file_id: str, timeout: int = DEFAULT_TIMEOUT) -> ResolvedSt
                 content_type = (resp.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
                 title = _decode_content_disposition_filename(resp.headers.get("Content-Disposition"))
                 if content_type != "text/html":
+                    resolved_title = title or extracted_title or _fetch_view_page_title(
+                        file_id, resource_key=resource_key, timeout=timeout
+                    )
                     return ResolvedStream(
                         url=final_url,
                         method="http",
-                        title=title or extracted_title,
+                        title=resolved_title,
                         content_type=content_type or None,
                     )
 
@@ -368,20 +456,31 @@ def resolve_via_http(file_id: str, timeout: int = DEFAULT_TIMEOUT) -> ResolvedSt
         parser = _DownloadFormParser()
         parser.feed(html_text)
         parsed_name = unescape("".join(parser.filename_parts)).strip()
+        html_title = _clean_html_title(parser.og_title) or _clean_html_title(
+            "".join(parser.title_parts)
+        )
         if parsed_name and not extracted_title:
             extracted_title = parsed_name
+        elif html_title and not extracted_title:
+            extracted_title = html_title
 
         if parser.form_action and parser.form_inputs:
             action_url = urljoin(final_url, parser.form_action)
-            confirmed_url = _build_url_with_params(action_url, parser.form_inputs)
+            form_params = dict(parser.form_inputs)
+            if resource_key and "resourcekey" not in form_params:
+                form_params["resourcekey"] = resource_key
+            confirmed_url = _build_url_with_params(action_url, form_params)
             ok, verified_title, verified_type, verified_url = _probe_direct_stream(
                 confirmed_url, timeout=timeout
             )
             if ok:
+                resolved_title = verified_title or extracted_title or _fetch_view_page_title(
+                    file_id, resource_key=resource_key, timeout=timeout
+                )
                 return ResolvedStream(
                     url=verified_url,
                     method="http",
-                    title=verified_title or extracted_title,
+                    title=resolved_title,
                     content_type=verified_type,
                 )
             last_error = t("resolver.error.confirmed_html")
@@ -389,7 +488,12 @@ def resolve_via_http(file_id: str, timeout: int = DEFAULT_TIMEOUT) -> ResolvedSt
         confirm_match = re.search(r"confirm=([0-9A-Za-z_-]+)", html_text)
         uuid_match = re.search(r"uuid=([0-9A-Za-z_-]+)", html_text)
         if confirm_match:
-            params = {"id": file_id, "export": "download", "confirm": confirm_match.group(1)}
+            params = {
+                "id": file_id,
+                "export": "download",
+                "confirm": confirm_match.group(1),
+                **extra_params,
+            }
             if uuid_match:
                 params["uuid"] = uuid_match.group(1)
             fallback_confirm_url = _build_url_with_params(
@@ -399,10 +503,13 @@ def resolve_via_http(file_id: str, timeout: int = DEFAULT_TIMEOUT) -> ResolvedSt
                 fallback_confirm_url, timeout=timeout
             )
             if ok:
+                resolved_title = verified_title or extracted_title or _fetch_view_page_title(
+                    file_id, resource_key=resource_key, timeout=timeout
+                )
                 return ResolvedStream(
                     url=verified_url,
                     method="http",
-                    title=verified_title or extracted_title,
+                    title=resolved_title,
                     content_type=verified_type,
                 )
 
@@ -413,6 +520,8 @@ def resolve_via_yt_dlp(
     file_id: str,
     yt_dlp_bin: str | None,
     timeout: int = 30,
+    *,
+    resource_key: str | None = None,
 ) -> ResolvedStream:
     """Resolves the stream URL by invoking yt-dlp in JSON metadata mode.
 
@@ -420,6 +529,7 @@ def resolve_via_yt_dlp(
         file_id (str): Google Drive file ID.
         yt_dlp_bin (str | None): Path to the yt-dlp binary.
         timeout (int): Subprocess execution timeout in seconds.
+        resource_key (str | None): Optional legacy resourcekey parameter.
 
     Returns:
         ResolvedStream: Extracted stream URL and metadata.
@@ -430,7 +540,7 @@ def resolve_via_yt_dlp(
     if not yt_dlp_bin:
         raise ResolutionError(t("resolver.error.yt_dlp_missing"))
 
-    view_url = build_view_url(file_id)
+    view_url = build_view_url(file_id, resource_key=resource_key)
     cmd = [yt_dlp_bin, "--no-warnings", "--no-playlist", "-j", view_url]
     try:
         proc = subprocess.run(
@@ -495,6 +605,8 @@ def resolve_via_api(
     file_id: str,
     api_key: str | None,
     timeout: int = DEFAULT_TIMEOUT,
+    *,
+    resource_key: str | None = None,
 ) -> ResolvedStream:
     """Resolves the stream using Google Drive API v3 with a public API key.
 
@@ -502,6 +614,7 @@ def resolve_via_api(
         file_id (str): Google Drive file ID.
         api_key (str | None): Google Drive API v3 key.
         timeout (int): Network timeout in seconds.
+        resource_key (str | None): Optional legacy resourcekey parameter.
 
     Returns:
         ResolvedStream: Direct API media URL and metadata.
@@ -521,7 +634,10 @@ def resolve_via_api(
     mime_type: str | None = None
 
     opener = build_opener()
-    meta_req = Request(meta_url, headers={"User-Agent": USER_AGENT}, method="GET")
+    meta_headers = {"User-Agent": USER_AGENT}
+    if resource_key:
+        meta_headers["X-Goog-Drive-Resource-Keys"] = f"{file_id}/{resource_key}"
+    meta_req = Request(meta_url, headers=meta_headers, method="GET")
     try:
         with opener.open(meta_req, timeout=timeout) as resp:
             meta = json.loads(resp.read().decode("utf-8"))
@@ -560,6 +676,7 @@ def resolve_drive_stream(
     method: str = "auto",
     yt_dlp_bin: str | None = None,
     api_key: str | None = None,
+    resource_key: str | None = None,
 ) -> ResolvedStream:
     """Resolves a Google Drive FILE_ID using the selected backend or auto cascade.
 
@@ -568,6 +685,7 @@ def resolve_drive_stream(
         method (str): Resolution strategy ('auto', 'http', 'yt-dlp', or 'api').
         yt_dlp_bin (str | None): Optional path to yt-dlp executable.
         api_key (str | None): Optional Google Drive API v3 key.
+        resource_key (str | None): Optional legacy resourcekey parameter.
 
     Returns:
         ResolvedStream: Portable direct streaming URL and metadata.
@@ -578,18 +696,18 @@ def resolve_drive_stream(
         ResolutionError: If all configured backends fail.
     """
     if method == "http":
-        return resolve_via_http(file_id)
+        return resolve_via_http(file_id, resource_key=resource_key)
     if method == "yt-dlp":
-        return resolve_via_yt_dlp(file_id, yt_dlp_bin=yt_dlp_bin)
+        return resolve_via_yt_dlp(file_id, yt_dlp_bin=yt_dlp_bin, resource_key=resource_key)
     if method == "api":
-        return resolve_via_api(file_id, api_key=api_key)
+        return resolve_via_api(file_id, api_key=api_key, resource_key=resource_key)
     if method != "auto":
         raise ValueError(t("resolver.error.unknown_method", method=method))
 
     errors: list[str] = []
 
     try:
-        return resolve_via_http(file_id)
+        return resolve_via_http(file_id, resource_key=resource_key)
     except PrivateOrBlockedError as exc:
         # Fail fast on private login redirects rather than masking the root cause.
         if exc.is_private or "accounts.google.com" in str(exc):
@@ -600,7 +718,7 @@ def resolve_drive_stream(
 
     if yt_dlp_bin:
         try:
-            return resolve_via_yt_dlp(file_id, yt_dlp_bin=yt_dlp_bin)
+            return resolve_via_yt_dlp(file_id, yt_dlp_bin=yt_dlp_bin, resource_key=resource_key)
         except ResolutionError as exc:
             errors.append(f"yt-dlp: {exc}")
     else:
@@ -608,7 +726,7 @@ def resolve_drive_stream(
 
     if api_key:
         try:
-            return resolve_via_api(file_id, api_key=api_key)
+            return resolve_via_api(file_id, api_key=api_key, resource_key=resource_key)
         except ResolutionError as exc:
             errors.append(f"api: {exc}")
 
