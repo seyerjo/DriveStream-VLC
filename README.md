@@ -1,0 +1,103 @@
+# 🚀 DriveStream VLC (`drive-vlc`)
+> Lightweight pure-Python 3 CLI that turns public read-only Google Drive video links into portable direct streaming URLs and launches VLC in Linux.
+
+![Project Status](https://img.shields.io/badge/Status-Active-success.svg)
+![Version](https://img.shields.io/badge/Version-v0.1.0-blue.svg)
+![Stage](https://img.shields.io/badge/Stage-MVP-blue.svg)
+![Stack](https://img.shields.io/badge/Stack-Python_3.12_Stdlib-orange.svg)
+![License](https://img.shields.io/badge/License-MIT-brightgreen.svg)
+
+---
+
+## 👋 Welcome!
+Welcome to **DriveStream VLC (`drive-vlc`)**! Whether you want to stream a shared Google Drive video straight into VLC without downloading gigabytes first, integrate a clean URL resolver into your Linux scripts, or contribute improvements to the codebase, we are glad you are here. Bug reports, ideas, and pull requests from the community are always welcome!
+
+## 🎯 Project Overview
+* 👁️ **Vision:** Provide a zero-dependency, portable Python 3 command-line tool that resolves public read-only Google Drive share links into standalone HTTP media URLs and launches VLC detached in Linux without running any local HTTP proxy.
+* 📌 **Core Highlights:**
+  * Zero external `pip` dependencies — runs anywhere via standard Python 3.12+.
+  * Multi-backend cascade (`http` direct HTML/confirm parser → `yt-dlp` → optional Google Drive API v3) with cookieless verification so URLs stay portable.
+  * Clean UNIX stream separation: `stdout` emits only the resolved URL while `stderr` carries status, warnings, and errors.
+
+## ⚡ Main Features
+* 💎 **Google Drive URL & ID Validator (`FEAT-01` / `FR-01`):** Accepts `/file/d/<ID>`, `/d/<ID>`, `open?id=<ID>`, `uc?id=<ID>`, `drive.usercontent.google.com`, or raw `FILE_ID` inputs while blocking folders and non-Drive domains.
+* 💎 **Cascading Portable Stream Resolver (`FEAT-02` / `FR-02`, `NFR-02`):** Handles large-file virus-scan HTML forms, decodes UTF-8/RFC-5987 filenames (including Latin-1 mojibake recovery), detects private/quota walls, and verifies non-HTML streams without cookies.
+* 💎 **Detached VLC Launcher & Clipboard Helper (`FEAT-03` / `FR-03`):** Launches `/usr/bin/vlc` detached (`start_new_session=True`) with `--network-caching=3000`, media title, and optional fullscreen or clipboard copy (`wl-copy`, `xclip`, `xsel`).
+* 💎 **Layered Config & Scriptable CLI (`FEAT-04` / `FR-04`):** Loads optional configuration by precedence (`os.environ` → `~/.config/drive-vlc/.env` → `.env`) and supports `--url-only`, `--cache`, `-f`, `--copy`, `--method`, and `-v`.
+* 💎 **Planned — Linux System-Locale CLI Localization (`FEAT-05` / `FR-05`):** Upcoming Linux-first i18n layer adapting CLI output to the OS locale (`en` base fallback + `es`, plus `--lang`).
+
+## 🛠️ Getting Started & Installation
+### 📋 Prerequisites
+* Linux desktop/terminal environment (tested on Zorin OS / X11)
+* Python `3.12+`
+* VLC Media Player (`/usr/bin/vlc`)
+* Optional: `yt-dlp` (fallback engine), `xclip`/`xsel`/`wl-copy` (for `--copy`)
+
+### ⚙️ Installation
+```bash
+# 1. Clone the repository
+git clone https://github.com/seyerjo/Ver-Videos-en-VLC.git
+cd Ver-Videos-en-VLC
+
+# 2. Make the entrypoint executable and symlink it into ~/.local/bin
+chmod +x drive-vlc
+mkdir -p ~/.local/bin
+ln -sf "$(pwd)/drive-vlc" ~/.local/bin/drive-vlc
+
+# 3. (Optional) Copy environment template if you want custom cache or API fallback
+cp .env.example ~/.config/drive-vlc/.env
+```
+
+## 🚀 Quick Usage
+```bash
+# Resolve a public Drive link, print the direct URL, and launch VLC in the background
+drive-vlc "https://drive.google.com/file/d/YOUR_FILE_ID/view?usp=sharing"
+
+# Print only the direct streaming URL without opening VLC
+drive-vlc --url-only "https://drive.google.com/file/d/YOUR_FILE_ID/view?usp=sharing"
+
+# Start VLC in fullscreen with a 5-second network cache
+drive-vlc -f --cache 5000 "https://drive.google.com/file/d/YOUR_FILE_ID/view?usp=sharing"
+
+# Force a specific backend with verbose diagnostics
+drive-vlc -v --method yt-dlp "YOUR_FILE_ID"
+
+# Run the offline unit test suite
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+```
+
+## 🗺️ Workflow & Architecture
+```mermaid
+graph TD
+    A["Input: Drive URL or FILE_ID"] --> B["cli.py: Parse args & load_config"]
+    B --> C["drive_url.py: extract_file_id"]
+    C --> D{"resolver.py: resolve_drive_stream"}
+    D -->|"1. http"| E["Direct HTTP + _DownloadFormParser"]
+    E -->|"Cookieless Range probe"| F{"Binary stream?"}
+    F -->|"Yes"| G["stdout: Direct Portable URL"]
+    F -->|"No"| H["2. yt-dlp -j fallback"]
+    H -->|"Fails & API key set"| I["3. Drive API v3 alt=media"]
+    H -->|"OK"| G
+    I -->|"OK"| G
+    G -->|"Default mode"| J["player.py: launch_vlc detached"]
+    G -->|"--copy"| K["Copy URL via wl-copy / xclip / xsel"]
+```
+
+## 🤝 Contributing
+Contributions, bug reports, and feature ideas are warmly welcome!
+Please read our **[Contributing Guidelines](./CONTRIBUTING_GUIDELINES.md)** before opening an issue or submitting a Pull Request.
+
+## ⚖️ Code of Conduct
+We are committed to fostering an open, welcoming, and respectful community. All participants are expected to uphold our **[Code of Conduct](./CODE_OF_CONDUCT.md)**.
+
+## 📄 License
+This project is licensed under the **MIT** License — see the **[LICENSE](./LICENSE)** file for details.
+
+## 📜 Changelog
+Track project milestones and release notes in **[CHANGELOG.md](./CHANGELOG.md)**.
+
+## 📚 Project Documentation
+Access the consolidated project documentation inside `/docs`:
+* 📘 **[Project Blueprint](./docs/01_project_blueprint.md):** Vision, functional/non-functional requirements (`FR`/`NFR`), and feature map.
+* 🛠️ **[Engineering Guidelines](./docs/02_engineering_guidelines.md):** Technical architecture, tech stack justifications, and code style guide.
+* 📋 **[Project Log](./docs/03_project_log.md):** Active prioritized task list (`To-Do List`) and development log.
