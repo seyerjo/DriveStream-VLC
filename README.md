@@ -23,8 +23,8 @@ Welcome to **DriveStream VLC (`drive-vlc`)**! Whether you want to stream a share
 * 💎 **Google Drive URL & ID Validator (`FEAT-01` / `FR-01`):** Accepts `/file/d/<ID>`, `/d/<ID>`, `open?id=<ID>`, `uc?id=<ID>`, `drive.usercontent.google.com`, or raw `FILE_ID` inputs while blocking folders and non-Drive domains.
 * 💎 **Cascading Portable Stream Resolver (`FEAT-02` / `FR-02`, `NFR-02`):** Handles large-file virus-scan HTML forms, decodes UTF-8/RFC-5987 filenames (including Latin-1 mojibake recovery), detects private/quota walls, and verifies non-HTML streams without cookies.
 * 💎 **Detached VLC Launcher & Clipboard Helper (`FEAT-03` / `FR-03`):** Launches `/usr/bin/vlc` detached (`start_new_session=True`) with `--network-caching=3000`, media title, and optional fullscreen or clipboard copy (`wl-copy`, `xclip`, `xsel`).
-* 💎 **Layered Config & Scriptable CLI (`FEAT-04` / `FR-04`):** Loads optional configuration by precedence (`os.environ` → `~/.config/drive-vlc/.env` → `.env`) and supports `--url-only`, `--cache`, `-f`, `--copy`, `--method`, and `-v`.
-* 💎 **Planned — Linux System-Locale CLI Localization (`FEAT-05` / `FR-05`):** Upcoming Linux-first i18n layer adapting CLI output to the OS locale (`en` base fallback + `es`, plus `--lang`).
+* 💎 **Layered Config & Scriptable CLI (`FEAT-04` / `FR-04`):** Loads optional configuration by precedence (`os.environ` → `~/.config/drive-vlc/.env` → `.env`) and supports `--url-only`, `--cache`, `-f`, `--copy`, `--method`, `--lang`, and `-v`.
+* 💎 **Linux System-Locale CLI Localization (`FEAT-05` / `FR-05`):** Automatically adapts CLI help, status, warnings, and errors to the Linux OS locale (`en` base fallback + `es`, or forced via `--lang`).
 
 ## 🛠️ Getting Started & Installation
 ### 📋 Prerequisites

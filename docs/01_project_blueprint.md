@@ -23,7 +23,7 @@ The project prioritizes stability, minimal footprint, strict standard-library po
 - **`NFR-01` [Priority: High] (Standard Library Only):** Keep `src/drive_vlc/` free of third-party `pip` dependencies (Python 3.12+ standard library only) so `~/.local/bin/drive-vlc` executes globally without activating a virtual environment.
 - **`NFR-02` [Priority: High] (Portable Direct URLs):** Never spawn a local HTTP proxy; probe candidate URLs without cookies (`Range: bytes=0-0`) to ensure VLC receives a binary media stream instead of an HTML interstitial.
 - **`NFR-03` [Priority: High] (Code Quality & Security):** Execute external binaries with `shell=False` argument lists, enforce strict Python type hints and Google-style English docstrings, and localize CLI output via `FR-05` with English as the base/fallback language.
-- **`NFR-04` [Priority: Medium] (Git Isolation & Offline Testing):** Keep `.env` credentials and local developer tooling untracked via `.gitignore` / `.git/info/exclude`, and maintain offline `unittest` coverage across URL parsing, configuration, resolution backends, and CLI execution.
+- **`NFR-04` [Priority: Medium] (Git Isolation & Offline Testing):** Keep `.env` credentials and local developer tooling untracked via `.gitignore` / `.git/info/exclude`, and maintain offline `unittest` coverage across URL parsing, configuration, i18n, resolution backends, and CLI execution (`24` tests).
 
 ---
 
@@ -47,6 +47,6 @@ The project prioritizes stability, minimal footprint, strict standard-library po
 - **Status:** Implemented.
 - **Capabilities:** Clean separation between `stdout` (resolved URL only) and `stderr` (status, warnings, errors), invoked globally via `~/.local/bin/drive-vlc`.
 
-### `FEAT-05` — Linux System-Locale CLI Localization (`i18n`)
-- **Status:** Planned (`FR-05`, `NFR-03`).
-- **Scope (Linux-First):** Detect OS locale from `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, and `LANG` without external dependencies or compiled `.mo` files, providing English (`en`, universal fallback) and Spanish (`es`) message catalogs plus an optional `--lang` CLI override.
+### `FEAT-05` — Linux System-Locale CLI Localization (`i18n.py`)
+- **Status:** Implemented (`FR-05`, `NFR-03`).
+- **Scope (Linux-First):** Detects OS locale from `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, and `LANG` without external dependencies or compiled `.mo` files, providing English (`en`, universal fallback) and Spanish (`es`) message catalogs plus an optional `--lang` CLI override (including localized `--help` output).
