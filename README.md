@@ -34,6 +34,21 @@ Welcome to **DriveStream VLC (`drive-vlc`)**! Whether you want to stream a share
 * Optional: `yt-dlp` (fallback engine), `xclip`/`xsel`/`wl-copy` (for `--copy`)
 
 ### ⚙️ Installation
+
+#### Option A — Standalone Release Executable (Recommended for End Users)
+Download the single-file `drive-vlc` executable (a lightweight, zero-dependency Python 3 `zipapp` package built for any Linux system with Python `3.12+`) from **[GitHub Releases](https://github.com/seyerjo/Ver-Videos-en-VLC/releases)** — no repository clone required:
+
+```bash
+# 1. (Optional) Verify checksum with SHA256SUMS downloaded from the same release
+sha256sum -c SHA256SUMS
+
+# 2. Make executable and place it in ~/.local/bin
+chmod +x drive-vlc
+mkdir -p ~/.local/bin
+mv drive-vlc ~/.local/bin/drive-vlc
+```
+
+#### Option B — From Source (Git Clone)
 ```bash
 # 1. Clone the repository
 git clone https://github.com/seyerjo/Ver-Videos-en-VLC.git
