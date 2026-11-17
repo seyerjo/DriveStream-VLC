@@ -69,6 +69,6 @@ The following engineering and code style standards apply to this repository:
    - Never hardcode credentials or API keys; resolve secrets exclusively via environment variables or `.env` files.
 6. **Git Workflow & Isolation:**
    - Use dedicated branches (`feature/*`, `fix/*`, `refactor/*`, `chore/*`) and Conventional Commits (`feat(scope): ...`, `fix(scope): ...`, etc.).
-   - Never merge into `master`/`main` without explicit user confirmation; keep local `.env` credentials and personal IDE/agent tooling untracked via `.gitignore` / `.git/info/exclude`.
+   - Never merge into `main` without explicit user confirmation; keep local `.env` credentials and personal IDE/agent tooling untracked via `.gitignore` / `.git/info/exclude`.
 7. **Verification Gate:**
    - Run `PYTHONPATH=src python3 -m unittest discover -s tests -v` after any Python code edit.
