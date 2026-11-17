@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from urllib.parse import parse_qs, urlparse
 
+from drive_vlc.i18n import t
+
 
 _FILE_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{15,}$")
 _PATH_ID_PATTERNS = (
@@ -36,27 +38,21 @@ def extract_file_id(raw_input: str) -> str:
     """
     value = raw_input.strip()
     if not value:
-        raise DriveUrlError("Debes indicar una URL de Google Drive o un ID de archivo.")
+        raise DriveUrlError(t("url.error.empty"))
 
     if _FILE_ID_PATTERN.match(value):
         return value
 
     parsed = urlparse(value)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise DriveUrlError(
-            f"Entrada no válida: {raw_input!r}. Pasa una URL completa de Google Drive o un ID válido."
-        )
+        raise DriveUrlError(t("url.error.invalid", raw=raw_input))
 
     host = parsed.netloc.split(":", 1)[0].lower()
     if host not in _SUPPORTED_HOSTS:
-        raise DriveUrlError(
-            f"El dominio {host!r} no pertenece a Google Drive."
-        )
+        raise DriveUrlError(t("url.error.non_drive", host=host))
 
     if "/folders/" in parsed.path:
-        raise DriveUrlError(
-            "Los enlaces de carpetas de Google Drive no están soportados; pasa el enlace de un vídeo individual."
-        )
+        raise DriveUrlError(t("url.error.folder"))
 
     for pattern in _PATH_ID_PATTERNS:
         match = pattern.search(parsed.path)
@@ -67,9 +63,7 @@ def extract_file_id(raw_input: str) -> str:
     if query_id and _FILE_ID_PATTERN.match(query_id[0]):
         return query_id[0]
 
-    raise DriveUrlError(
-        f"No se pudo extraer un FILE_ID válido de la URL proporcionada: {raw_input!r}"
-    )
+    raise DriveUrlError(t("url.error.no_id", raw=raw_input))
 
 
 def build_view_url(file_id: str) -> str:

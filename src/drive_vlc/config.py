@@ -7,6 +7,8 @@ import os
 from pathlib import Path
 import shutil
 
+from drive_vlc.i18n import t
+
 
 DEFAULT_CACHE_MS = 3000
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -71,6 +73,14 @@ def parse_env_file(path: Path) -> dict[str, str]:
 
 
 def _resolve_vlc_bin(configured: str | None) -> str:
+    """Resolves the VLC executable path from config, PATH, or standard Linux location.
+
+    Args:
+        configured (str | None): Explicit VLC binary path configured by the user.
+
+    Returns:
+        str: Executable name or path for VLC.
+    """
     if configured:
         return configured
     found = shutil.which("vlc")
@@ -80,6 +90,14 @@ def _resolve_vlc_bin(configured: str | None) -> str:
 
 
 def _resolve_yt_dlp_bin(configured: str | None) -> str | None:
+    """Resolves the optional yt-dlp executable path from config, PATH, or ~/.local/bin.
+
+    Args:
+        configured (str | None): Explicit yt-dlp binary path configured by the user.
+
+    Returns:
+        str | None: Path to yt-dlp if available, otherwise ``None``.
+    """
     if configured:
         return configured
     found = shutil.which("yt-dlp")
@@ -131,11 +149,9 @@ def load_config(
         try:
             cache_ms = int(raw_cache)
         except ValueError as exc:
-            raise ConfigError(
-                f"DRIVE_VLC_CACHE_MS debe ser un entero en milisegundos, recibido: {raw_cache!r}"
-            ) from exc
+            raise ConfigError(t("config.error.cache_int", value=raw_cache)) from exc
         if cache_ms < 0:
-            raise ConfigError("DRIVE_VLC_CACHE_MS no puede ser negativo.")
+            raise ConfigError(t("config.error.cache_negative"))
     else:
         cache_ms = DEFAULT_CACHE_MS
 

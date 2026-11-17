@@ -1,9 +1,13 @@
 import unittest
 
 from drive_vlc.drive_url import DriveUrlError, build_view_url, extract_file_id
+from drive_vlc.i18n import set_active_language
 
 
 class TestDriveUrl(unittest.TestCase):
+    def tearDown(self) -> None:
+        set_active_language(None)
+
     def test_extracts_from_file_view_url(self) -> None:
         url = "https://drive.google.com/file/d/1AbCdEfGhIjKlMnOpQrStUvWxYz/view?usp=sharing"
         self.assertEqual(extract_file_id(url), "1AbCdEfGhIjKlMnOpQrStUvWxYz")
@@ -19,10 +23,16 @@ class TestDriveUrl(unittest.TestCase):
             with self.subTest(url=url):
                 self.assertEqual(extract_file_id(url), file_id)
 
-    def test_rejects_folder_url(self) -> None:
-        with self.assertRaises(DriveUrlError) as ctx:
+    def test_rejects_folder_url_in_spanish_and_english(self) -> None:
+        set_active_language("es")
+        with self.assertRaises(DriveUrlError) as ctx_es:
             extract_file_id("https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz")
-        self.assertIn("carpetas", str(ctx.exception))
+        self.assertIn("carpetas", str(ctx_es.exception))
+
+        set_active_language("en")
+        with self.assertRaises(DriveUrlError) as ctx_en:
+            extract_file_id("https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz")
+        self.assertIn("folder", str(ctx_en.exception))
 
     def test_rejects_non_drive_domain_and_empty(self) -> None:
         with self.assertRaises(DriveUrlError):

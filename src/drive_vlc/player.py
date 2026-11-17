@@ -6,6 +6,8 @@ from pathlib import Path
 import shutil
 import subprocess
 
+from drive_vlc.i18n import t
+
 
 class PlayerError(RuntimeError):
     """Raised when launching VLC fails."""
@@ -65,7 +67,7 @@ def launch_vlc(
     """
     resolved_bin = shutil.which(vlc_bin) or (vlc_bin if Path(vlc_bin).is_file() else None)
     if not resolved_bin:
-        raise PlayerError(f"No se encontró el ejecutable de VLC en {vlc_bin!r}.")
+        raise PlayerError(t("player.error.missing_bin", vlc_bin=vlc_bin))
 
     cmd = build_vlc_command(
         url,
@@ -83,7 +85,9 @@ def launch_vlc(
             start_new_session=True,
         )
     except OSError as exc:
-        raise PlayerError(f"No se pudo iniciar VLC ({resolved_bin}): {exc}") from exc
+        raise PlayerError(
+            t("player.error.launch_failed", vlc_bin=resolved_bin, error=exc)
+        ) from exc
 
     return proc.pid
 
@@ -122,6 +126,5 @@ def copy_to_clipboard(text: str) -> tuple[bool, str]:
 
     return (
         False,
-        "No se encontró ninguna herramienta de portapapeles compatible (wl-copy, xclip o xsel). "
-        "Puedes instalar xclip con: sudo apt install xclip",
+        t("player.copy.no_backend"),
     )

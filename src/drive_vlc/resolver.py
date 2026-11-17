@@ -5,15 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from html import unescape
 from html.parser import HTMLParser
+from http.client import HTTPMessage
 import json
 import re
 import subprocess
-from typing import Iterable
+from typing import IO
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, unquote, urlencode, urljoin, urlparse, urlunparse
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from drive_vlc.drive_url import build_view_url
+from drive_vlc.i18n import t
 
 
 USER_AGENT = (
@@ -28,7 +30,21 @@ class ResolutionError(RuntimeError):
 
 
 class PrivateOrBlockedError(ResolutionError):
-    """Raised when the file is private, requires login, or hits a quota limit."""
+    """Raised when the file is private, requires login, or hits a quota limit.
+
+    Attributes:
+        is_private (bool): True when the failure clearly stems from private access.
+    """
+
+    def __init__(self, message: str, *, is_private: bool = False) -> None:
+        """Initializes PrivateOrBlockedError with privacy classification.
+
+        Args:
+            message (str): Localized error message.
+            is_private (bool): Whether the remote response indicated a login/private wall.
+        """
+        super().__init__(message)
+        self.is_private = is_private
 
 
 @dataclass(frozen=True)
@@ -54,6 +70,7 @@ class _DownloadFormParser(HTMLParser):
     """Parses the virus-scan confirmation form and filename from Drive HTML."""
 
     def __init__(self) -> None:
+        """Initializes parser state for form inputs and filename extraction."""
         super().__init__()
         self.in_target_form = False
         self.form_action: str | None = None
@@ -63,6 +80,12 @@ class _DownloadFormParser(HTMLParser):
         self.filename_parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        """Processes HTML opening tags to locate the download form and title link.
+
+        Args:
+            tag (str): Lowercase or raw HTML tag name.
+            attrs (list[tuple[str, str | None]]): Tag attribute key-value pairs.
+        """
         attr_map = {k.lower(): (v or "") for k, v in attrs}
         tag_l = tag.lower()
 
@@ -83,6 +106,11 @@ class _DownloadFormParser(HTMLParser):
             self.in_name_link = True
 
     def handle_endtag(self, tag: str) -> None:
+        """Processes HTML closing tags to reset active parser sections.
+
+        Args:
+            tag (str): HTML closing tag name.
+        """
         tag_l = tag.lower()
         if tag_l == "form" and self.in_target_form:
             self.in_target_form = False
@@ -92,6 +120,11 @@ class _DownloadFormParser(HTMLParser):
             self.in_name_span = False
 
     def handle_data(self, data: str) -> None:
+        """Collects character data inside the filename link element.
+
+        Args:
+            data (str): Text content encountered within the current tag.
+        """
         if self.in_name_link:
             self.filename_parts.append(data)
 
@@ -100,10 +133,32 @@ class _CaptureRedirectHandler(HTTPRedirectHandler):
     """Records intermediate redirect URLs during HTTP resolution."""
 
     def __init__(self) -> None:
+        """Initializes an empty redirect history list."""
         super().__init__()
         self.visited_urls: list[str] = []
 
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+    def redirect_request(
+        self,
+        req: Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
+    ) -> Request | None:
+        """Logs each HTTP redirect target before delegating to the base handler.
+
+        Args:
+            req (Request): Original HTTP request.
+            fp (IO[bytes]): Response body stream.
+            code (int): HTTP redirect status code.
+            msg (str): HTTP status reason phrase.
+            headers (HTTPMessage): Response headers.
+            newurl (str): Target redirect URL.
+
+        Returns:
+            Request | None: Follow-up request object or ``None``.
+        """
         self.visited_urls.append(newurl)
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
@@ -124,6 +179,14 @@ def _fix_latin1_utf8_mojibake(value: str) -> str:
 
 
 def _decode_content_disposition_filename(header_value: str | None) -> str | None:
+    """Extracts and decodes the filename from a Content-Disposition header.
+
+    Args:
+        header_value (str | None): Raw Content-Disposition HTTP header.
+
+    Returns:
+        str | None: Decoded filename if present, otherwise ``None``.
+    """
     if not header_value:
         return None
     star_match = re.search(r"filename\*\s*=\s*([^;]+)", header_value, flags=re.IGNORECASE)
@@ -145,28 +208,68 @@ def _decode_content_disposition_filename(header_value: str | None) -> str | None
 
 
 def _is_login_redirect(url: str) -> bool:
+    """Checks whether a resolved URL points to Google's sign-in host.
+
+    Args:
+        url (str): Target or final URL to inspect.
+
+    Returns:
+        bool: True if the host belongs to ``accounts.google.com``.
+    """
     host = urlparse(url).netloc.lower()
     return "accounts.google.com" in host
 
 
 def _detect_html_block_reason(html_text: str) -> str | None:
+    """Detects quota exhaustion or private access messages inside Drive HTML.
+
+    Args:
+        html_text (str): Decoded HTML body from Google Drive.
+
+    Returns:
+        str | None: Localized reason message if blocked, otherwise ``None``.
+    """
     lowered = html_text.lower()
     if "too many users have viewed or downloaded this file recently" in lowered or "quota exceeded" in lowered:
-        return "Google Drive ha superado temporalmente la cuota de descargas/visualizaciones para este archivo."
+        return t("resolver.error.quota")
     if "you need access" in lowered or "request access" in lowered or "sign in" in lowered:
-        return "El archivo parece ser privado o requerir inicio de sesión; compártelo con enlace público de solo lectura."
+        return t("resolver.error.private")
     return None
 
 
 def _build_url_with_params(base_url: str, params: dict[str, str]) -> str:
+    """Merges query parameters onto a base URL cleanly.
+
+    Args:
+        base_url (str): Target endpoint URL.
+        params (dict[str, str]): Query parameters to add or override.
+
+    Returns:
+        str: Reconstructed URL with merged query string.
+    """
     parsed = urlparse(base_url)
     existing = dict(parse_qsl(parsed.query, keep_blank_values=True))
     existing.update(params)
     return urlunparse(parsed._replace(query=urlencode(existing)))
 
 
-def _probe_direct_stream(url: str, timeout: int = DEFAULT_TIMEOUT) -> tuple[bool, str | None, str | None, str]:
-    """Probes a candidate URL without cookies to confirm it returns binary media instead of HTML."""
+def _probe_direct_stream(
+    url: str,
+    timeout: int = DEFAULT_TIMEOUT,
+) -> tuple[bool, str | None, str | None, str]:
+    """Probes a candidate URL without cookies to confirm it returns binary media instead of HTML.
+
+    Args:
+        url (str): Candidate direct download URL.
+        timeout (int): Network timeout in seconds.
+
+    Returns:
+        tuple[bool, str | None, str | None, str]: Success flag, filename, MIME type, final URL.
+
+    Raises:
+        PrivateOrBlockedError: If redirected to login or denied with 401/403.
+        ResolutionError: On 404, unexpected HTTP error, or network error.
+    """
     redirect_handler = _CaptureRedirectHandler()
     opener = build_opener(redirect_handler)
     req = Request(
@@ -181,9 +284,7 @@ def _probe_direct_stream(url: str, timeout: int = DEFAULT_TIMEOUT) -> tuple[bool
         with opener.open(req, timeout=timeout) as resp:
             final_url = resp.geturl()
             if _is_login_redirect(final_url):
-                raise PrivateOrBlockedError(
-                    "Google Drive redirige a accounts.google.com: el archivo no es público."
-                )
+                raise PrivateOrBlockedError(t("resolver.error.login_redirect"), is_private=True)
             content_type = (resp.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
             filename = _decode_content_disposition_filename(resp.headers.get("Content-Disposition"))
             if content_type == "text/html":
@@ -192,13 +293,13 @@ def _probe_direct_stream(url: str, timeout: int = DEFAULT_TIMEOUT) -> tuple[bool
     except HTTPError as exc:
         if exc.code in (401, 403):
             raise PrivateOrBlockedError(
-                f"Acceso denegado (HTTP {exc.code}). Verifica que el archivo tenga permisos públicos de solo lectura."
+                t("resolver.error.access_denied", code=exc.code)
             ) from exc
         if exc.code == 404:
-            raise ResolutionError("El archivo no existe o el enlace es inválido (HTTP 404).") from exc
-        raise ResolutionError(f"Error HTTP {exc.code} al verificar la URL directa.") from exc
+            raise ResolutionError(t("resolver.error.not_found")) from exc
+        raise ResolutionError(t("resolver.error.http_probe", code=exc.code)) from exc
     except URLError as exc:
-        raise ResolutionError(f"Error de red al conectar con Google Drive: {exc.reason}") from exc
+        raise ResolutionError(t("resolver.error.network", reason=exc.reason)) from exc
 
 
 def resolve_via_http(file_id: str, timeout: int = DEFAULT_TIMEOUT) -> ResolvedStream:
@@ -234,9 +335,7 @@ def resolve_via_http(file_id: str, timeout: int = DEFAULT_TIMEOUT) -> ResolvedSt
             with opener.open(req, timeout=timeout) as resp:
                 final_url = resp.geturl()
                 if _is_login_redirect(final_url):
-                    raise PrivateOrBlockedError(
-                        "El archivo requiere iniciar sesión en Google Drive (no es público)."
-                    )
+                    raise PrivateOrBlockedError(t("resolver.error.login_redirect"), is_private=True)
                 content_type = (resp.headers.get("Content-Type") or "").split(";", 1)[0].strip().lower()
                 title = _decode_content_disposition_filename(resp.headers.get("Content-Disposition"))
                 if content_type != "text/html":
@@ -253,14 +352,14 @@ def resolve_via_http(file_id: str, timeout: int = DEFAULT_TIMEOUT) -> ResolvedSt
         except HTTPError as exc:
             if exc.code in (401, 403):
                 raise PrivateOrBlockedError(
-                    f"Acceso denegado (HTTP {exc.code}). Asegúrate de compartir el archivo como público (cualquier persona con el enlace)."
+                    t("resolver.error.access_denied", code=exc.code)
                 ) from exc
             if exc.code == 404:
-                raise ResolutionError("Archivo no encontrado en Google Drive (HTTP 404).") from exc
+                raise ResolutionError(t("resolver.error.not_found")) from exc
             last_error = f"HTTP {exc.code}"
             continue
         except URLError as exc:
-            raise ResolutionError(f"Error de red al consultar Google Drive: {exc.reason}") from exc
+            raise ResolutionError(t("resolver.error.network", reason=exc.reason)) from exc
 
         block_reason = _detect_html_block_reason(html_text)
         if block_reason:
@@ -285,7 +384,7 @@ def resolve_via_http(file_id: str, timeout: int = DEFAULT_TIMEOUT) -> ResolvedSt
                     title=verified_title or extracted_title,
                     content_type=verified_type,
                 )
-            last_error = "La URL confirmada siguió devolviendo HTML sin cookies de sesión."
+            last_error = t("resolver.error.confirmed_html")
 
         confirm_match = re.search(r"confirm=([0-9A-Za-z_-]+)", html_text)
         uuid_match = re.search(r"uuid=([0-9A-Za-z_-]+)", html_text)
@@ -307,10 +406,7 @@ def resolve_via_http(file_id: str, timeout: int = DEFAULT_TIMEOUT) -> ResolvedSt
                     content_type=verified_type,
                 )
 
-    raise ResolutionError(
-        last_error
-        or "No se pudo obtener una URL directa reproducible por HTTP (posible página HTML dependiente de cookies)."
-    )
+    raise ResolutionError(last_error or t("resolver.error.http_failed"))
 
 
 def resolve_via_yt_dlp(
@@ -332,7 +428,7 @@ def resolve_via_yt_dlp(
         ResolutionError: If yt-dlp is unavailable, fails, or returns invalid JSON.
     """
     if not yt_dlp_bin:
-        raise ResolutionError("yt-dlp no está instalado o configurado en el sistema.")
+        raise ResolutionError(t("resolver.error.yt_dlp_missing"))
 
     view_url = build_view_url(file_id)
     cmd = [yt_dlp_bin, "--no-warnings", "--no-playlist", "-j", view_url]
@@ -345,21 +441,21 @@ def resolve_via_yt_dlp(
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise ResolutionError(f"Error al ejecutar yt-dlp: {exc}") from exc
+        raise ResolutionError(t("resolver.error.yt_dlp_exec", error=exc)) from exc
 
     if proc.returncode != 0:
         err_msg = (proc.stderr or proc.stdout or "").strip().splitlines()
-        detail = err_msg[-1] if err_msg else f"código de salida {proc.returncode}"
-        raise ResolutionError(f"yt-dlp no pudo resolver el enlace: {detail}")
+        detail = err_msg[-1] if err_msg else t("resolver.error.yt_dlp_exit", code=proc.returncode)
+        raise ResolutionError(t("resolver.error.yt_dlp_failed", detail=detail))
 
     first_line = next((line for line in proc.stdout.splitlines() if line.strip()), "")
     if not first_line:
-        raise ResolutionError("yt-dlp no devolvió metadatos JSON.")
+        raise ResolutionError(t("resolver.error.yt_dlp_empty_json"))
 
     try:
         info = json.loads(first_line)
     except json.JSONDecodeError as exc:
-        raise ResolutionError(f"Salida JSON inválida de yt-dlp: {exc}") from exc
+        raise ResolutionError(t("resolver.error.yt_dlp_invalid_json", error=exc)) from exc
 
     warnings: list[str] = []
     stream_url = info.get("url")
@@ -374,17 +470,13 @@ def resolve_via_yt_dlp(
                 break
         if not stream_url and info["requested_formats"]:
             stream_url = info["requested_formats"][0].get("url")
-            warnings.append(
-                "yt-dlp seleccionó pistas separadas de vídeo/audio; la URL devuelta podría no incluir audio en VLC."
-            )
+            warnings.append(t("resolver.warn.yt_dlp_split"))
 
     if not stream_url or not isinstance(stream_url, str):
-        raise ResolutionError("yt-dlp no devolvió una URL directa reproducible.")
+        raise ResolutionError(t("resolver.error.yt_dlp_no_url"))
 
     if isinstance(http_headers, dict) and any(k.lower() == "cookie" for k in http_headers):
-        warnings.append(
-            "La URL devuelta por yt-dlp podría depender de cookies/cabeceras temporales en algunos sistemas."
-        )
+        warnings.append(t("resolver.warn.yt_dlp_cookies"))
 
     title = info.get("title") or info.get("fulltitle")
     ext = info.get("ext")
@@ -419,9 +511,7 @@ def resolve_via_api(
         ResolutionError: If the key is missing or the file cannot be probed.
     """
     if not api_key:
-        raise ResolutionError(
-            "No hay GOOGLE_DRIVE_API_KEY configurada (en entorno, ~/.config/drive-vlc/.env o .env)."
-        )
+        raise ResolutionError(t("resolver.error.api_key_missing"))
 
     meta_url = (
         f"https://www.googleapis.com/drive/v3/files/{file_id}"
@@ -440,13 +530,13 @@ def resolve_via_api(
     except HTTPError as exc:
         if exc.code in (401, 403):
             raise PrivateOrBlockedError(
-                f"La API de Google Drive rechazó la petición (HTTP {exc.code}). Revisa tu API Key o los permisos públicos del archivo."
+                t("resolver.error.api_rejected", code=exc.code)
             ) from exc
         if exc.code == 404:
-            raise ResolutionError("Archivo no encontrado o no accesible públicamente vía API (HTTP 404).") from exc
-        raise ResolutionError(f"Error HTTP {exc.code} al consultar metadatos en Google Drive API.") from exc
+            raise ResolutionError(t("resolver.error.api_not_found")) from exc
+        raise ResolutionError(t("resolver.error.api_http", code=exc.code)) from exc
     except URLError as exc:
-        raise ResolutionError(f"Error de red al consultar Google Drive API: {exc.reason}") from exc
+        raise ResolutionError(t("resolver.error.api_network", reason=exc.reason)) from exc
 
     media_url = (
         f"https://www.googleapis.com/drive/v3/files/{file_id}"
@@ -454,7 +544,7 @@ def resolve_via_api(
     )
     ok, _, probed_type, verified_url = _probe_direct_stream(media_url, timeout=timeout)
     if not ok:
-        raise ResolutionError("La API de Google Drive devolvió HTML inesperado en lugar del archivo.")
+        raise ResolutionError(t("resolver.error.api_html"))
 
     return ResolvedStream(
         url=verified_url,
@@ -494,7 +584,7 @@ def resolve_drive_stream(
     if method == "api":
         return resolve_via_api(file_id, api_key=api_key)
     if method != "auto":
-        raise ValueError(f"Método de resolución desconocido: {method!r}")
+        raise ValueError(t("resolver.error.unknown_method", method=method))
 
     errors: list[str] = []
 
@@ -502,7 +592,7 @@ def resolve_drive_stream(
         return resolve_via_http(file_id)
     except PrivateOrBlockedError as exc:
         # Fail fast on private login redirects rather than masking the root cause.
-        if "accounts.google.com" in str(exc) or "privado" in str(exc).lower():
+        if exc.is_private or "accounts.google.com" in str(exc):
             raise
         errors.append(f"http: {exc}")
     except ResolutionError as exc:
@@ -514,7 +604,7 @@ def resolve_drive_stream(
         except ResolutionError as exc:
             errors.append(f"yt-dlp: {exc}")
     else:
-        errors.append("yt-dlp: no disponible en el sistema")
+        errors.append(t("resolver.error.yt_dlp_unavailable"))
 
     if api_key:
         try:
@@ -523,4 +613,4 @@ def resolve_drive_stream(
             errors.append(f"api: {exc}")
 
     summary = " | ".join(errors)
-    raise ResolutionError(f"No se pudo resolver una URL directa portable ({summary}).")
+    raise ResolutionError(t("resolver.error.cascade_failed", summary=summary))

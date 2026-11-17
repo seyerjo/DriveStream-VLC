@@ -1,15 +1,20 @@
 from contextlib import redirect_stderr, redirect_stdout
 import io
+import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
 from drive_vlc.cli import main
 from drive_vlc.config import AppConfig
+from drive_vlc.i18n import set_active_language
 from drive_vlc.player import build_vlc_command, copy_to_clipboard, launch_vlc
 from drive_vlc.resolver import ResolvedStream
 
 
 class TestPlayerAndCli(unittest.TestCase):
+    def tearDown(self) -> None:
+        set_active_language(None)
     def test_build_vlc_command(self) -> None:
         cmd = build_vlc_command(
             "https://example.com/video.mp4",
@@ -91,6 +96,31 @@ class TestPlayerAndCli(unittest.TestCase):
             fullscreen=True,
         )
         self.assertIn("PID 9876", stderr_buf.getvalue())
+
+    def test_cli_structured_logging_and_lang_flag(self) -> None:
+        cfg = AppConfig(api_key=None, cache_ms=3000, vlc_bin="/usr/bin/vlc", yt_dlp_bin=None)
+        resolved = ResolvedStream(url="https://cdn.example/stream.mp4", method="http", title="demo.mp4")
+        stdout_buf = io.StringIO()
+        stderr_buf = io.StringIO()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with (
+                patch.dict(os.environ, {"XDG_STATE_HOME": tmpdir, "LANG": "es_ES.UTF-8"}, clear=False),
+                patch("drive_vlc.cli.load_config", return_value=cfg),
+                patch("drive_vlc.cli.resolve_drive_stream", return_value=resolved),
+                patch("drive_vlc.cli.launch_vlc", return_value=2468),
+                redirect_stdout(stdout_buf),
+                redirect_stderr(stderr_buf),
+            ):
+                code = main(["--lang", "en", "-v", "1AbCdEfGhIjKlMnOpQrStUvWxYz"])
+
+            self.assertEqual(code, 0)
+            self.assertEqual(stdout_buf.getvalue().strip(), "https://cdn.example/stream.mp4")
+            err_text = stderr_buf.getvalue()
+            self.assertIn(" - DEBUG - method=http | title=demo.mp4", err_text)
+            self.assertIn(" - INFO - VLC launched (PID 2468, method: http, cache: 3000 ms)", err_text)
+            log_file = os.path.join(tmpdir, "drive-vlc", "drive-vlc.log")
+            self.assertTrue(os.path.isfile(log_file))
 
 
 if __name__ == "__main__":
