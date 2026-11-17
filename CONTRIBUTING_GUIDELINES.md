@@ -16,7 +16,7 @@ We welcome ideas for new features or optimizations! To propose a change:
 
 ## 3. 🌿 Pull Request Process & Branching Strategy
 To ensure swift reviews and zero code conflicts, follow this deployment protocol:
-1. Fork the repository and create a feature branch off `master` using a semantic name (e.g., `feature/feat-05-cli-i18n` or `fix/issue-12-header-encoding`).
+1. Fork the repository and create a feature branch off `main` using a semantic name (e.g., `feature/feat-05-cli-i18n` or `fix/issue-12-header-encoding`).
 2. Implement your changes adhering strictly to the architecture and style guide laid out in `/docs/02_engineering_guidelines.md`, and verify everything passes with `PYTHONPATH=src python3 -m unittest discover -s tests -v`.
 3. Open a Pull Request (PR) targeted at the main branch. Ensure your PR description details the explicit problem solved and references any related issue IDs.
 4. Maintain a clean commit history using Conventional Commits. A maintainer will review code style compliance and structural integrity before merging.
