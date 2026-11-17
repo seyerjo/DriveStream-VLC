@@ -23,20 +23,20 @@ The project prioritizes stability, minimal footprint, strict standard-library po
 - **`NFR-01` [Priority: High] (Standard Library Only):** Keep `src/drive_vlc/` free of third-party `pip` dependencies (Python 3.12+ standard library only) so `~/.local/bin/drive-vlc` executes globally without activating a virtual environment.
 - **`NFR-02` [Priority: High] (Portable Direct URLs):** Never spawn a local HTTP proxy; probe candidate URLs without cookies (`Range: bytes=0-0`) to ensure VLC receives a binary media stream instead of an HTML interstitial.
 - **`NFR-03` [Priority: High] (Code Quality & Security):** Execute external binaries with `shell=False` argument lists, enforce strict Python type hints and Google-style English docstrings, and localize CLI output via `FR-05` with English as the base/fallback language.
-- **`NFR-04` [Priority: Medium] (Git Isolation & Offline Testing):** Keep `.env` credentials and local developer tooling untracked via `.gitignore` / `.git/info/exclude`, and maintain offline `unittest` coverage across URL parsing, configuration, i18n, resolution backends, and CLI execution (`24` tests).
+- **`NFR-04` [Priority: Medium] (Git Isolation & Offline Testing):** Keep `.env` credentials and local developer tooling untracked via `.gitignore` / `.git/info/exclude`, and maintain offline `unittest` coverage across URL parsing, configuration, i18n, resolution backends, and CLI execution (`26` tests).
 
 ---
 
 ## Product Features
 
 ### `FEAT-01` — Google Drive URL & ID Validator (`drive_url.py`)
-- **Status:** Implemented (`extract_file_id`, `build_view_url`).
-- **Known Edge Cases / Limitations:** Legacy Drive links carrying a `resourcekey` query parameter do not currently propagate `resourcekey`; shortened URLs (e.g., `bit.ly`) are rejected as non-Drive domains.
+- **Status:** Implemented (`extract_drive_link`, `extract_file_id`, `build_view_url`, `DriveLinkInfo`).
+- **Known Edge Cases / Limitations:** Shortened URLs (e.g., `bit.ly`) are rejected as non-Drive domains.
 
 ### `FEAT-02` — Cascading Portable Stream Resolver (`resolver.py`)
 - **Status:** Implemented (`resolve_via_http`, `resolve_via_yt_dlp`, `resolve_via_api`, `resolve_drive_stream`).
-- **Capabilities:** Parses Drive antivirus confirmation HTML forms (`_DownloadFormParser`), detects private/login redirects (`accounts.google.com`) and quota limits, decodes UTF-8/RFC-5987 `Content-Disposition` filenames (including Latin-1 mojibake recovery), and verifies streams cookieless.
-- **Known Edge Cases / Limitations:** Resolved `uuid` / signed CDN URLs may expire after prolonged playback pauses in VLC; files without `Content-Disposition` leave `title=None` under the `http` backend.
+- **Capabilities:** Parses Drive antivirus confirmation HTML forms (`_DownloadFormParser`), propagates legacy `resourcekey` parameters, falls back to Drive viewer HTML `<meta property="og:title">` / `<title>` when `Content-Disposition` is absent, detects private/login redirects (`accounts.google.com`) and quota limits, decodes UTF-8/RFC-5987 `Content-Disposition` filenames (including Latin-1 mojibake recovery), and verifies streams cookieless.
+- **Known Edge Cases / Limitations:** Resolved `uuid` / signed CDN URLs may expire after prolonged playback pauses in VLC.
 
 ### `FEAT-03` — Detached VLC Launcher & Clipboard Helper (`player.py`)
 - **Status:** Implemented (`build_vlc_command`, `launch_vlc`, `copy_to_clipboard`).
