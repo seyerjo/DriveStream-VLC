@@ -46,13 +46,13 @@ flowchart TD
 
 ## Code Style Guide
 
-All rules below are derived strictly from the active rule set in `.agents/rules/` (`global_instructions.md`, `global_git_rules.md`, `project_rules_python_console_and_scripts.md`, and `local_drive_vlc_constraints.md`):
+The following engineering and code style standards apply to this repository:
 
 1. **Language Separation:**
    - Conversational chat responses must be in **Spanish (Spain)**.
    - All repository filenames, source code, identifiers, comments, docstrings, documentation, and configuration files must be in **English** (CLI user-facing output uses English base messages localized to the Linux system locale per `FEAT-05`).
 2. **Python Architecture & Typing:**
-   - Keep `src/drive_vlc/` strictly in Python 3 standard library with zero external `pip` runtime dependencies (`local_drive_vlc_constraints.md` overrides `.venv`/`pyproject.toml` runtime dependency requirements).
+   - Keep `src/drive_vlc/` strictly in Python 3 standard library with zero external `pip` runtime dependencies so `~/.local/bin/drive-vlc` executes globally without requiring a virtual environment.
    - Never introduce a local HTTP proxy server; all resolved URLs must remain portable HTTP links.
    - Use strict Python type hints on every function signature, parameter, and return type.
    - Use `argparse` with descriptive `help` strings for every argument and flag; never parse `sys.argv` manually.
@@ -68,6 +68,6 @@ All rules below are derived strictly from the active rule set in `.agents/rules/
    - Never hardcode credentials or API keys; resolve secrets exclusively via environment variables or `.env` files.
 6. **Git Workflow & Isolation:**
    - Use dedicated branches (`feature/*`, `fix/*`, `refactor/*`, `chore/*`) and Conventional Commits (`feat(scope): ...`, `fix(scope): ...`, etc.).
-   - Never merge into `master`/`main` without explicit user confirmation; keep `.agents/`, `.vscode/`, and `.env` excluded via `.git/info/exclude` / `.gitignore`.
+   - Never merge into `master`/`main` without explicit user confirmation; keep local `.env` credentials and personal IDE/agent tooling untracked via `.gitignore` / `.git/info/exclude`.
 7. **Verification Gate:**
    - Run `PYTHONPATH=src python3 -m unittest discover -s tests -v` after any Python code edit.
