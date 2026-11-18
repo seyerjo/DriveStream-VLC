@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from html import unescape
 from html.parser import HTMLParser
@@ -374,11 +375,23 @@ def _fetch_view_page_title(
     return _clean_html_title(parser.og_title) or _clean_html_title("".join(parser.title_parts))
 
 
+def _emit_status(on_status: Callable[[str], None] | None, message: str) -> None:
+    """Safely forwards a progress legend to an optional status callback.
+
+    Args:
+        on_status (Callable[[str], None] | None): Optional progress callback.
+        message (str): Localized status legend to emit.
+    """
+    if on_status is not None:
+        on_status(message)
+
+
 def resolve_via_http(
     file_id: str,
     timeout: int = DEFAULT_TIMEOUT,
     *,
     resource_key: str | None = None,
+    on_status: Callable[[str], None] | None = None,
 ) -> ResolvedStream:
     """Resolves a direct streaming URL via unauthenticated HTTP requests.
 
@@ -386,6 +399,7 @@ def resolve_via_http(
         file_id (str): Google Drive file ID.
         timeout (int): Network timeout in seconds per request.
         resource_key (str | None): Optional legacy resourcekey parameter.
+        on_status (Callable[[str], None] | None): Optional progress status callback.
 
     Returns:
         ResolvedStream: Verified direct streaming URL and metadata.
@@ -394,6 +408,7 @@ def resolve_via_http(
         PrivateOrBlockedError: If the file requires authentication or is forbidden.
         ResolutionError: If no direct non-HTML stream could be confirmed.
     """
+    _emit_status(on_status, t("resolver.step.http"))
     extra_params = {"resourcekey": resource_key} if resource_key else {}
     candidates = [
         _build_url_with_params(
@@ -465,6 +480,7 @@ def resolve_via_http(
             extracted_title = html_title
 
         if parser.form_action and parser.form_inputs:
+            _emit_status(on_status, t("resolver.step.http_confirm"))
             action_url = urljoin(final_url, parser.form_action)
             form_params = dict(parser.form_inputs)
             if resource_key and "resourcekey" not in form_params:
@@ -488,6 +504,7 @@ def resolve_via_http(
         confirm_match = re.search(r"confirm=([0-9A-Za-z_-]+)", html_text)
         uuid_match = re.search(r"uuid=([0-9A-Za-z_-]+)", html_text)
         if confirm_match:
+            _emit_status(on_status, t("resolver.step.http_confirm"))
             params = {
                 "id": file_id,
                 "export": "download",
@@ -522,6 +539,7 @@ def resolve_via_yt_dlp(
     timeout: int = 30,
     *,
     resource_key: str | None = None,
+    on_status: Callable[[str], None] | None = None,
 ) -> ResolvedStream:
     """Resolves the stream URL by invoking yt-dlp in JSON metadata mode.
 
@@ -530,6 +548,7 @@ def resolve_via_yt_dlp(
         yt_dlp_bin (str | None): Path to the yt-dlp binary.
         timeout (int): Subprocess execution timeout in seconds.
         resource_key (str | None): Optional legacy resourcekey parameter.
+        on_status (Callable[[str], None] | None): Optional progress status callback.
 
     Returns:
         ResolvedStream: Extracted stream URL and metadata.
@@ -539,6 +558,8 @@ def resolve_via_yt_dlp(
     """
     if not yt_dlp_bin:
         raise ResolutionError(t("resolver.error.yt_dlp_missing"))
+
+    _emit_status(on_status, t("resolver.step.yt_dlp"))
 
     view_url = build_view_url(file_id, resource_key=resource_key)
     cmd = [yt_dlp_bin, "--no-warnings", "--no-playlist", "-j", view_url]
@@ -607,6 +628,7 @@ def resolve_via_api(
     timeout: int = DEFAULT_TIMEOUT,
     *,
     resource_key: str | None = None,
+    on_status: Callable[[str], None] | None = None,
 ) -> ResolvedStream:
     """Resolves the stream using Google Drive API v3 with a public API key.
 
@@ -615,6 +637,7 @@ def resolve_via_api(
         api_key (str | None): Google Drive API v3 key.
         timeout (int): Network timeout in seconds.
         resource_key (str | None): Optional legacy resourcekey parameter.
+        on_status (Callable[[str], None] | None): Optional progress status callback.
 
     Returns:
         ResolvedStream: Direct API media URL and metadata.
@@ -625,6 +648,8 @@ def resolve_via_api(
     """
     if not api_key:
         raise ResolutionError(t("resolver.error.api_key_missing"))
+
+    _emit_status(on_status, t("resolver.step.api"))
 
     meta_url = (
         f"https://www.googleapis.com/drive/v3/files/{file_id}"
@@ -677,6 +702,7 @@ def resolve_drive_stream(
     yt_dlp_bin: str | None = None,
     api_key: str | None = None,
     resource_key: str | None = None,
+    on_status: Callable[[str], None] | None = None,
 ) -> ResolvedStream:
     """Resolves a Google Drive FILE_ID using the selected backend or auto cascade.
 
@@ -686,6 +712,7 @@ def resolve_drive_stream(
         yt_dlp_bin (str | None): Optional path to yt-dlp executable.
         api_key (str | None): Optional Google Drive API v3 key.
         resource_key (str | None): Optional legacy resourcekey parameter.
+        on_status (Callable[[str], None] | None): Optional progress status callback.
 
     Returns:
         ResolvedStream: Portable direct streaming URL and metadata.
@@ -695,19 +722,27 @@ def resolve_drive_stream(
         PrivateOrBlockedError: If the file requires private authentication.
         ResolutionError: If all configured backends fail.
     """
+    status_kwargs: dict[str, Callable[[str], None]] = (
+        {"on_status": on_status} if on_status is not None else {}
+    )
+
     if method == "http":
-        return resolve_via_http(file_id, resource_key=resource_key)
+        return resolve_via_http(file_id, resource_key=resource_key, **status_kwargs)
     if method == "yt-dlp":
-        return resolve_via_yt_dlp(file_id, yt_dlp_bin=yt_dlp_bin, resource_key=resource_key)
+        return resolve_via_yt_dlp(
+            file_id, yt_dlp_bin=yt_dlp_bin, resource_key=resource_key, **status_kwargs
+        )
     if method == "api":
-        return resolve_via_api(file_id, api_key=api_key, resource_key=resource_key)
+        return resolve_via_api(
+            file_id, api_key=api_key, resource_key=resource_key, **status_kwargs
+        )
     if method != "auto":
         raise ValueError(t("resolver.error.unknown_method", method=method))
 
     errors: list[str] = []
 
     try:
-        return resolve_via_http(file_id, resource_key=resource_key)
+        return resolve_via_http(file_id, resource_key=resource_key, **status_kwargs)
     except PrivateOrBlockedError as exc:
         # Fail fast on private login redirects rather than masking the root cause.
         if exc.is_private or "accounts.google.com" in str(exc):
@@ -718,7 +753,9 @@ def resolve_drive_stream(
 
     if yt_dlp_bin:
         try:
-            return resolve_via_yt_dlp(file_id, yt_dlp_bin=yt_dlp_bin, resource_key=resource_key)
+            return resolve_via_yt_dlp(
+                file_id, yt_dlp_bin=yt_dlp_bin, resource_key=resource_key, **status_kwargs
+            )
         except ResolutionError as exc:
             errors.append(f"yt-dlp: {exc}")
     else:
@@ -726,7 +763,9 @@ def resolve_drive_stream(
 
     if api_key:
         try:
-            return resolve_via_api(file_id, api_key=api_key, resource_key=resource_key)
+            return resolve_via_api(
+                file_id, api_key=api_key, resource_key=resource_key, **status_kwargs
+            )
         except ResolutionError as exc:
             errors.append(f"api: {exc}")
 

@@ -19,6 +19,7 @@ from drive_vlc.i18n import (
 )
 from drive_vlc.player import PlayerError, copy_to_clipboard, launch_vlc
 from drive_vlc.resolver import ResolutionError, resolve_drive_stream
+from drive_vlc.ui import ConsolePresenter
 
 
 def _default_log_path() -> Path:
@@ -32,11 +33,17 @@ def _default_log_path() -> Path:
     return state_root / "drive-vlc" / "drive-vlc.log"
 
 
-def _configure_logging(verbose: bool, *, log_path: Path | None = None) -> logging.Logger:
+def _configure_logging(
+    verbose: bool,
+    *,
+    stream_to_stderr: bool = True,
+    log_path: Path | None = None,
+) -> logging.Logger:
     """Configures structured logging to stderr and an optional local log file.
 
     Args:
         verbose (bool): Enables DEBUG output on stderr when True; INFO otherwise.
+        stream_to_stderr (bool): Attaches a stderr StreamHandler when True.
         log_path (Path | None): Optional override path for the local debug log file.
 
     Returns:
@@ -52,10 +59,11 @@ def _configure_logging(verbose: bool, *, log_path: Path | None = None) -> loggin
 
     formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 
-    stderr_handler = logging.StreamHandler(sys.stderr)
-    stderr_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
-    stderr_handler.setFormatter(formatter)
-    logger.addHandler(stderr_handler)
+    if stream_to_stderr:
+        stderr_handler = logging.StreamHandler(sys.stderr)
+        stderr_handler.setLevel(logging.DEBUG if verbose else logging.INFO)
+        stderr_handler.setFormatter(formatter)
+        logger.addHandler(stderr_handler)
 
     target_log = _default_log_path() if log_path is None else log_path
     try:
@@ -98,6 +106,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "url_or_id",
+        nargs="?",
+        default=None,
         help=t("cli.help.url_or_id"),
     )
     parser.add_argument(
@@ -141,7 +151,79 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=t("cli.help.verbose"),
     )
+    parser.add_argument(
+        "--plain",
+        action="store_true",
+        help=t("cli.help.plain"),
+    )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help=t("cli.help.no_color"),
+    )
     return parser
+
+
+def _emit_error(presenter: ConsolePresenter, logger: logging.Logger, message: str) -> None:
+    """Records an error in structured logs and renders it on the TTY presenter if active.
+
+    Args:
+        presenter (ConsolePresenter): Active console presenter.
+        logger (logging.Logger): Package logger instance.
+        message (str): Localized error message.
+    """
+    logger.error("%s", message)
+    presenter.render_error(message)
+
+
+def _emit_warning(presenter: ConsolePresenter, logger: logging.Logger, message: str) -> None:
+    """Records a warning in structured logs and renders it on the TTY presenter if active.
+
+    Args:
+        presenter (ConsolePresenter): Active console presenter.
+        logger (logging.Logger): Package logger instance.
+        message (str): Localized warning message.
+    """
+    logger.warning("%s", message)
+    presenter.render_warning(message)
+
+
+def _resolve_input_url_or_id(
+    raw_arg: str | None,
+    presenter: ConsolePresenter,
+    logger: logging.Logger,
+) -> str | None:
+    """Obtains the Drive URL or FILE_ID from CLI args or an interactive TTY prompt.
+
+    Args:
+        raw_arg (str | None): Positional CLI argument value, if supplied.
+        presenter (ConsolePresenter): Active console presenter for prompting.
+        logger (logging.Logger): Package logger instance.
+
+    Returns:
+        str | None: Non-empty trimmed URL/ID, or ``None`` if missing or cancelled.
+    """
+    cleaned = (raw_arg or "").strip()
+    if cleaned:
+        return cleaned
+
+    if not bool(getattr(presenter.input_stream, "isatty", lambda: False)()):
+        _emit_error(presenter, logger, t("cli.error.missing_url"))
+        return None
+
+    try:
+        entered = presenter.prompt_input(t("cli.prompt.url"))
+    except (EOFError, KeyboardInterrupt):
+        if presenter.enabled:
+            presenter.write_line()
+        _emit_error(presenter, logger, t("cli.prompt.cancelled"))
+        return None
+
+    if not entered:
+        _emit_error(presenter, logger, t("url.error.empty"))
+        return None
+
+    return entered
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -158,31 +240,70 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
-    logger = _configure_logging(args.verbose)
+    presenter = ConsolePresenter(
+        plain=args.plain,
+        no_color=args.no_color,
+        verbose=args.verbose,
+    )
+    logger = _configure_logging(args.verbose, stream_to_stderr=not presenter.enabled)
 
     if args.cache is not None and args.cache < 0:
-        logger.error(t("cli.error.negative_cache"))
+        _emit_error(presenter, logger, t("cli.error.negative_cache"))
         return 1
 
-    try:
-        config = load_config()
-        link_info = extract_drive_link(args.url_or_id)
-        resolved = resolve_drive_stream(
-            link_info.file_id,
-            method=args.method,
-            yt_dlp_bin=config.yt_dlp_bin,
-            api_key=config.api_key,
-            resource_key=link_info.resource_key,
-        )
-    except (ConfigError, DriveUrlError, ResolutionError) as exc:
-        logger.error("%s", exc)
+    presenter.render_header(t("ui.banner.title"), t("ui.banner.subtitle"))
+
+    raw_input = _resolve_input_url_or_id(args.url_or_id, presenter, logger)
+    if raw_input is None:
         return 1
+
+    with presenter.live_step(t("ui.step.config.start"), animate=False) as step:
+        logger.info(t("ui.step.config.start"))
+        try:
+            config = load_config()
+        except ConfigError as exc:
+            step.fail(str(exc))
+            logger.error("%s", exc)
+            return 1
+        step.succeed(t("ui.step.config.done"))
+        logger.info(t("ui.step.config.done"))
+
+    with presenter.live_step(t("ui.step.parse.start"), animate=False) as step:
+        logger.info(t("ui.step.parse.start"))
+        try:
+            link_info = extract_drive_link(raw_input)
+        except DriveUrlError as exc:
+            step.fail(str(exc))
+            logger.error("%s", exc)
+            return 1
+        parse_done = t("ui.step.parse.done", file_id=link_info.file_id)
+        step.succeed(parse_done)
+        logger.info(parse_done)
+
+    with presenter.live_step(t("ui.step.resolve.start"), animate=True) as step:
+        logger.info(t("ui.step.resolve.start"))
+        try:
+            resolved = resolve_drive_stream(
+                link_info.file_id,
+                method=args.method,
+                yt_dlp_bin=config.yt_dlp_bin,
+                api_key=config.api_key,
+                resource_key=link_info.resource_key,
+                on_status=step.update,
+            )
+        except ResolutionError as exc:
+            step.fail(str(exc))
+            logger.error("%s", exc)
+            return 1
+        resolve_done = t("ui.step.resolve.done", method=resolved.method)
+        step.succeed(resolve_done)
+        logger.info(resolve_done)
 
     # Always emit only the clean URL to stdout for easy piping and automated reading.
     print(resolved.url)
 
     for warning in resolved.warnings:
-        logger.warning("%s", warning)
+        _emit_warning(presenter, logger, warning)
 
     unknown_label = t("cli.unknown")
     logger.debug(
@@ -194,26 +315,44 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     )
 
+    clipboard_status: str | None = None
     if args.copy:
-        copied, copy_info = copy_to_clipboard(resolved.url)
-        if copied:
-            logger.info(t("cli.copy.success", backend=copy_info))
-        else:
-            logger.warning("%s", copy_info)
+        with presenter.live_step(t("ui.step.copy.start"), animate=False) as step:
+            logger.info(t("ui.step.copy.start"))
+            copied, copy_info = copy_to_clipboard(resolved.url)
+            if copied:
+                step.succeed(t("ui.step.copy.done", backend=copy_info))
+                logger.info(t("cli.copy.success", backend=copy_info))
+                clipboard_status = copy_info
+            else:
+                step.warn(copy_info)
+                logger.warning("%s", copy_info)
+
+    summary_rows: list[tuple[str, str]] = [
+        (t("ui.label.title"), resolved.title or unknown_label),
+        (t("ui.label.method"), resolved.method),
+    ]
+    if clipboard_status:
+        summary_rows.append((t("ui.label.clipboard"), clipboard_status))
 
     if not args.url_only:
         cache_ms = config.cache_ms if args.cache is None else args.cache
-        try:
-            pid = launch_vlc(
-                resolved.url,
-                vlc_bin=config.vlc_bin,
-                cache_ms=cache_ms,
-                title=resolved.title,
-                fullscreen=args.fullscreen,
-            )
-        except PlayerError as exc:
-            logger.error(t("cli.error.vlc_launch", error=exc))
-            return 1
+        with presenter.live_step(t("ui.step.vlc.start"), animate=True) as step:
+            logger.info(t("ui.step.vlc.start"))
+            try:
+                pid = launch_vlc(
+                    resolved.url,
+                    vlc_bin=config.vlc_bin,
+                    cache_ms=cache_ms,
+                    title=resolved.title,
+                    fullscreen=args.fullscreen,
+                )
+            except PlayerError as exc:
+                err_msg = t("cli.error.vlc_launch", error=exc)
+                step.fail(err_msg)
+                logger.error("%s", err_msg)
+                return 1
+            step.succeed(t("ui.step.vlc.done", pid=pid, cache_ms=cache_ms))
 
         title_suffix = f" — {resolved.title}" if resolved.title else ""
         logger.info(
@@ -225,6 +364,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 title_suffix=title_suffix,
             )
         )
+        summary_rows.append((t("ui.label.cache"), f"{cache_ms} ms"))
+        summary_rows.append((t("ui.label.pid"), str(pid)))
+        presenter.render_summary(t("ui.summary.title"), summary_rows)
+    else:
+        presenter.render_summary(t("ui.summary.url_only"), summary_rows)
 
     return 0
 

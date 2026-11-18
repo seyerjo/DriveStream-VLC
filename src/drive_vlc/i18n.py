@@ -30,6 +30,11 @@ _CATALOGS: dict[str, dict[str, str]] = {
             "Force CLI output language (default: Linux system locale, fallback: en)."
         ),
         "cli.help.verbose": "Emit diagnostic details via stderr logging.",
+        "cli.help.plain": "Disable styled Nala-like terminal UI and spinner on stderr.",
+        "cli.help.no_color": "Disable ANSI colors in terminal output.",
+        "cli.prompt.url": "Paste Google Drive URL or FILE_ID: ",
+        "cli.prompt.cancelled": "Input cancelled by user.",
+        "cli.error.missing_url": "Missing Google Drive URL or FILE_ID in non-interactive mode.",
         "cli.error.negative_cache": "--cache cannot be negative.",
         "cli.error.vlc_launch": "Failed to launch VLC: {error}",
         "cli.verbose.details": "method={method} | title={title} | type={content_type}",
@@ -38,6 +43,26 @@ _CATALOGS: dict[str, dict[str, str]] = {
         "cli.vlc.launched": (
             "VLC launched (PID {pid}, method: {method}, cache: {cache_ms} ms){title_suffix}"
         ),
+        "ui.banner.title": "DriveStream VLC",
+        "ui.banner.subtitle": "Portable Google Drive -> VLC streamer",
+        "ui.summary.title": "Playback Ready",
+        "ui.summary.url_only": "URL Ready",
+        "ui.label.title": "Title",
+        "ui.label.method": "Method",
+        "ui.label.cache": "VLC Cache",
+        "ui.label.pid": "VLC PID",
+        "ui.label.clipboard": "Clipboard",
+        "ui.label.log": "Log File",
+        "ui.step.config.start": "Loading configuration...",
+        "ui.step.config.done": "Configuration loaded",
+        "ui.step.parse.start": "Validating Google Drive link...",
+        "ui.step.parse.done": "Drive link validated ({file_id})",
+        "ui.step.resolve.start": "Adjusting URL and resolving direct stream...",
+        "ui.step.resolve.done": "Direct stream ready via {method}",
+        "ui.step.copy.start": "Copying URL to clipboard...",
+        "ui.step.copy.done": "URL copied to clipboard ({backend})",
+        "ui.step.vlc.start": "Opening video in VLC...",
+        "ui.step.vlc.done": "Video opened in VLC (PID {pid}, cache {cache_ms} ms)",
         "config.error.cache_int": (
             "DRIVE_VLC_CACHE_MS must be an integer in milliseconds, got: {value!r}"
         ),
@@ -114,6 +139,10 @@ _CATALOGS: dict[str, dict[str, str]] = {
         "resolver.error.unknown_method": "Unknown resolution method: {method!r}",
         "resolver.error.yt_dlp_unavailable": "yt-dlp: unavailable on system",
         "resolver.error.cascade_failed": "Could not resolve a portable direct URL ({summary}).",
+        "resolver.step.http": "Adjusting Drive URL and probing direct HTTP stream...",
+        "resolver.step.http_confirm": "Confirming Drive download notice and verifying stream...",
+        "resolver.step.yt_dlp": "Fallback: extracting stream metadata with yt-dlp...",
+        "resolver.step.api": "Fallback: querying Google Drive API v3...",
     },
     "es": {
         "cli.description": (
@@ -134,6 +163,11 @@ _CATALOGS: dict[str, dict[str, str]] = {
             "Forzar idioma de salida de la CLI (por defecto: locale del sistema Linux, respaldo: en)."
         ),
         "cli.help.verbose": "Muestra detalles diagnósticos mediante logging por stderr.",
+        "cli.help.plain": "Desactiva la salida visual estilizada tipo Nala y el spinner en stderr.",
+        "cli.help.no_color": "Desactiva los colores ANSI en la salida de terminal.",
+        "cli.prompt.url": "Pega la URL de Google Drive o el FILE_ID: ",
+        "cli.prompt.cancelled": "Entrada cancelada por el usuario.",
+        "cli.error.missing_url": "Falta la URL de Google Drive o el FILE_ID en modo no interactivo.",
         "cli.error.negative_cache": "--cache no puede ser negativo.",
         "cli.error.vlc_launch": "Error al abrir VLC: {error}",
         "cli.verbose.details": "método={method} | título={title} | tipo={content_type}",
@@ -142,6 +176,26 @@ _CATALOGS: dict[str, dict[str, str]] = {
         "cli.vlc.launched": (
             "VLC lanzado (PID {pid}, método: {method}, caché: {cache_ms} ms){title_suffix}"
         ),
+        "ui.banner.title": "DriveStream VLC",
+        "ui.banner.subtitle": "Streaming directo de Google Drive en VLC",
+        "ui.summary.title": "Reproducción lista",
+        "ui.summary.url_only": "URL lista",
+        "ui.label.title": "Título",
+        "ui.label.method": "Método",
+        "ui.label.cache": "Caché VLC",
+        "ui.label.pid": "PID de VLC",
+        "ui.label.clipboard": "Portapapeles",
+        "ui.label.log": "Registro",
+        "ui.step.config.start": "Cargando configuración...",
+        "ui.step.config.done": "Configuración cargada",
+        "ui.step.parse.start": "Validando enlace de Google Drive...",
+        "ui.step.parse.done": "Enlace de Drive validado ({file_id})",
+        "ui.step.resolve.start": "Ajustando URL y resolviendo stream directo...",
+        "ui.step.resolve.done": "URL directa lista mediante {method}",
+        "ui.step.copy.start": "Copiando URL al portapapeles...",
+        "ui.step.copy.done": "URL copiada al portapapeles ({backend})",
+        "ui.step.vlc.start": "Abriendo vídeo en VLC...",
+        "ui.step.vlc.done": "Vídeo abierto en VLC (PID {pid}, caché {cache_ms} ms)",
         "config.error.cache_int": (
             "DRIVE_VLC_CACHE_MS debe ser un entero en milisegundos, recibido: {value!r}"
         ),
@@ -229,6 +283,10 @@ _CATALOGS: dict[str, dict[str, str]] = {
         "resolver.error.cascade_failed": (
             "No se pudo resolver una URL directa portable ({summary})."
         ),
+        "resolver.step.http": "Ajustando URL de Drive y verificando stream HTTP directo...",
+        "resolver.step.http_confirm": "Confirmando aviso de descarga de Drive y verificando stream...",
+        "resolver.step.yt_dlp": "Alternativa: extrayendo metadatos con yt-dlp...",
+        "resolver.step.api": "Alternativa: consultando Google Drive API v3...",
     },
 }
 
