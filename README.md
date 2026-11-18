@@ -2,7 +2,7 @@
 > Lightweight pure-Python 3 CLI that turns public read-only Google Drive video links into portable direct streaming URLs and launches VLC in Linux.
 
 ![Project Status](https://img.shields.io/badge/Status-Active-success.svg)
-![Version](https://img.shields.io/badge/Version-v0.1.0-blue.svg)
+![Version](https://img.shields.io/badge/Version-v0.2.0-blue.svg)
 ![Stage](https://img.shields.io/badge/Stage-MVP-blue.svg)
 ![Stack](https://img.shields.io/badge/Stack-Python_3.12_Stdlib-orange.svg)
 ![License](https://img.shields.io/badge/License-MIT-brightgreen.svg)
@@ -23,8 +23,10 @@ Welcome to **DriveStream VLC (`drive-vlc`)**! Whether you want to stream a share
 * 💎 **Google Drive URL & ID Validator (`FEAT-01` / `FR-01`):** Accepts `/file/d/<ID>`, `/d/<ID>`, `open?id=<ID>`, `uc?id=<ID>`, `drive.usercontent.google.com`, or raw `FILE_ID` inputs while blocking folders and non-Drive domains.
 * 💎 **Cascading Portable Stream Resolver (`FEAT-02` / `FR-02`, `NFR-02`):** Handles large-file virus-scan HTML forms, decodes UTF-8/RFC-5987 filenames (including Latin-1 mojibake recovery), detects private/quota walls, and verifies non-HTML streams without cookies.
 * 💎 **Detached VLC Launcher & Clipboard Helper (`FEAT-03` / `FR-03`):** Launches `/usr/bin/vlc` detached (`start_new_session=True`) with `--network-caching=3000`, media title, and optional fullscreen or clipboard copy (`wl-copy`, `xclip`, `xsel`).
-* 💎 **Layered Config & Scriptable CLI (`FEAT-04` / `FR-04`):** Loads optional configuration by precedence (`os.environ` → `~/.config/drive-vlc/.env` → `.env`) and supports `--url-only`, `--cache`, `-f`, `--copy`, `--method`, `--lang`, and `-v`.
+* 💎 **Layered Config & Scriptable CLI (`FEAT-04` / `FR-04`):** Loads optional configuration by precedence (`os.environ` → `~/.config/drive-vlc/.env` → `.env`) and supports `--url-only`, `--cache`, `-f`, `--copy`, `--method`, `--lang`, `--plain`, `--no-color`, and `-v`.
 * 💎 **Linux System-Locale CLI Localization (`FEAT-05` / `FR-05`):** Automatically adapts CLI help, status, warnings, and errors to the Linux OS locale (`en` base fallback + `es`, or forced via `--lang`).
+* 💎 **Interactive URL Prompt (`FEAT-06` / `FR-06`):** Invoking `drive-vlc` without arguments in an interactive terminal prompts for the Google Drive link or `FILE_ID` via `stderr` without polluting `stdout`.
+* 💎 **Nala-Inspired Pure-Stdlib Terminal UI & Process Legends (`FEAT-07` / `FEAT-08`):** Renders Unicode rounded panels, ANSI colors, a threaded Braille spinner, and localized step-by-step progress legends on interactive `stderr`, respecting `NO_COLOR`, `--no-color`, and `--plain`.
 
 ## 🛠️ Getting Started & Installation
 ### 📋 Prerequisites
@@ -65,6 +67,9 @@ cp .env.example ~/.config/drive-vlc/.env
 
 ## 🚀 Quick Usage
 ```bash
+# Interactive mode (prompts for the Google Drive link or FILE_ID)
+drive-vlc
+
 # Resolve a public Drive link, print the direct URL, and launch VLC in the background
 drive-vlc "https://drive.google.com/file/d/YOUR_FILE_ID/view?usp=sharing"
 
@@ -73,6 +78,9 @@ drive-vlc --url-only "https://drive.google.com/file/d/YOUR_FILE_ID/view?usp=shar
 
 # Start VLC in fullscreen with a 5-second network cache
 drive-vlc -f --cache 5000 "https://drive.google.com/file/d/YOUR_FILE_ID/view?usp=sharing"
+
+# Plain logging output without styled panels/spinner or ANSI colors
+drive-vlc --plain "YOUR_FILE_ID"
 
 # Force a specific backend with verbose diagnostics
 drive-vlc -v --method yt-dlp "YOUR_FILE_ID"
