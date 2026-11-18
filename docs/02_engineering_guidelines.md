@@ -28,6 +28,7 @@ flowchart TD
 - [`drive-vlc`](../drive-vlc): Executable symlink target (`~/.local/bin/drive-vlc`) that prepends `src/` to `sys.path` and calls `main()`.
 - [`config.py`](../src/drive_vlc/config.py): Pure-stdlib `.env` parser and precedence resolver (`AppConfig`).
 - [`i18n.py`](../src/drive_vlc/i18n.py): Pure-stdlib Linux locale detector (`LANGUAGE`/`LC_ALL`/`LC_MESSAGES`/`LANG`) and `en`/`es` message catalogs.
+- [`ui.py`](../src/drive_vlc/ui.py): Pure-stdlib `nala`-inspired TTY presenter (ANSI colors, Unicode rounded panels, Braille spinner on `stderr`, and `NO_COLOR`/`--plain` fallback).
 - [`drive_url.py`](../src/drive_vlc/drive_url.py): Drive URL parser (`extract_drive_link`, `DriveLinkInfo`), legacy `resourcekey` extraction, folder blocker, and `FILE_ID` validator.
 - [`resolver.py`](../src/drive_vlc/resolver.py): Resolution backends (`http`, `yt-dlp`, `api`), HTML confirmation parser, viewer `<title>` fallback (`_fetch_view_page_title`), `Content-Disposition` UTF-8 decoder, and cookieless stream probe.
 - [`player.py`](../src/drive_vlc/player.py): Detached VLC subprocess launcher and Linux clipboard integration.

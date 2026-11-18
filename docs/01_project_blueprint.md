@@ -17,13 +17,16 @@ The project prioritizes stability, minimal footprint, strict standard-library po
 - **`FR-03` (CLI Output & VLC Playback):** Print the clean resolved URL to `stdout` and launch VLC detached in the background by default, or print only the URL when `--url-only` is passed.
 - **`FR-04` (Configuration & Playback Controls):** Load optional settings in precedence order (`os.environ` -> `~/.config/drive-vlc/.env` -> `<repo>/.env`) and support `--cache`, `-f`/`--fullscreen`, `--copy`, and `-v`/`--verbose`.
 - **`FR-05` (System-Locale CLI Localization — Linux First):** Automatically display CLI help, status messages, warnings, and errors in the Linux system language (`LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, `LANG`), starting with English (`en` as universal fallback) and Spanish (`es`) via a pure-stdlib catalog plus an optional `--lang` override.
+- **`FR-06` (Interactive URL Prompt):** Make the positional `url_or_id` argument optional (`nargs="?"`) and, when omitted in an interactive terminal (`sys.stdin.isatty()`), prompt the user on `sys.stderr` for the Google Drive link or `FILE_ID`, failing cleanly on non-interactive `stdin` or cancellation (`EOF` / `Ctrl+C`).
+- **`FR-07` (Nala-Inspired Pure-Stdlib CLI Styling):** Render structured Unicode borders, ANSI color accents, status icons, and an animated TTY spinner on `sys.stderr` using pure Python 3 standard library (`ui.py`), respecting `NO_COLOR`, `TERM=dumb`, `--no-color`, and `--plain`, while automatically falling back to plain structured logging in non-TTY pipes or `--verbose` mode.
+- **`FR-08` (Localized Process-Completion Legends):** Display clear, descriptive, localized (`en`/`es`) progress legends for each execution stage (configuration loading, Drive link validation, HTTP/`yt-dlp`/API stream resolution, clipboard copy, VLC launch) on interactive `stderr`, while keeping `stdout` strictly reserved for the clean resolved URL.
 
 ### Non-Functional Requirements
 
 - **`NFR-01` [Priority: High] (Standard Library Only):** Keep `src/drive_vlc/` free of third-party `pip` dependencies (Python 3.12+ standard library only) so `~/.local/bin/drive-vlc` executes globally without activating a virtual environment.
 - **`NFR-02` [Priority: High] (Portable Direct URLs):** Never spawn a local HTTP proxy; probe candidate URLs without cookies (`Range: bytes=0-0`) to ensure VLC receives a binary media stream instead of an HTML interstitial.
 - **`NFR-03` [Priority: High] (Code Quality & Security):** Execute external binaries with `shell=False` argument lists, enforce strict Python type hints and Google-style English docstrings, and localize CLI output via `FR-05` with English as the base/fallback language.
-- **`NFR-04` [Priority: Medium] (Git Isolation & Offline Testing):** Keep `.env` credentials and local developer tooling untracked via `.gitignore` / `.git/info/exclude`, and maintain offline `unittest` coverage across URL parsing, configuration, i18n, resolution backends, and CLI execution (`26` tests).
+- **`NFR-04` [Priority: Medium] (Git Isolation & Offline Testing):** Keep `.env` credentials and local developer tooling untracked via `.gitignore` / `.git/info/exclude`, and maintain offline `unittest` coverage across URL parsing, configuration, i18n, UI presenter, resolution backends, and CLI execution (`33` tests).
 
 ---
 
@@ -50,3 +53,15 @@ The project prioritizes stability, minimal footprint, strict standard-library po
 ### `FEAT-05` — Linux System-Locale CLI Localization (`i18n.py`)
 - **Status:** Implemented (`FR-05`, `NFR-03`).
 - **Scope (Linux-First):** Detects OS locale from `LANGUAGE`, `LC_ALL`, `LC_MESSAGES`, and `LANG` without external dependencies or compiled `.mo` files, providing English (`en`, universal fallback) and Spanish (`es`) message catalogs plus an optional `--lang` CLI override (including localized `--help` output).
+
+### `FEAT-06` — Interactive Missing URL Prompt (`cli.py`)
+- **Status:** Implemented (`FR-06`).
+- **Capabilities:** Prompts via `sys.stderr` when `drive-vlc` is invoked without a positional URL/ID in an interactive TTY, handling empty inputs, `EOF`, and `KeyboardInterrupt` gracefully without polluting `stdout`.
+
+### `FEAT-07` — Nala-Inspired Pure-Stdlib Terminal Presenter (`ui.py`)
+- **Status:** Implemented (`FR-07`, `NFR-01`).
+- **Capabilities:** Pure-stdlib ANSI color palette, Unicode rounded header/summary panels, status badges, and threaded Braille spinner on interactive `stderr`, with automatic downgrade to plain structured `logging` in non-TTY streams, `NO_COLOR`, `--no-color`, `--plain`, or `--verbose`.
+
+### `FEAT-08` — Localized Process-Completion Progress Legends (`cli.py`, `resolver.py`, `i18n.py`)
+- **Status:** Implemented (`FR-08`, `FR-05`).
+- **Capabilities:** Real-time step-by-step progress legends across configuration loading, URL parsing, cascading resolution backends, clipboard copy, and detached VLC startup in both `en` and `es`.

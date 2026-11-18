@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Interactive `sys.stderr` prompt when `drive-vlc` is invoked without a URL or `FILE_ID` in a TTY (`FR-06`).
+- Nala-inspired pure-stdlib terminal UI presenter (`src/drive_vlc/ui.py`) with rounded Unicode panels, ANSI accents, threaded Braille spinner on `stderr`, and `--plain` / `--no-color` / `NO_COLOR` support (`FR-07`).
+- Localized (`en`/`es`) process-completion progress legends across configuration loading, Drive link validation, cascading resolution (`http`, `yt-dlp`, `api`), clipboard copy, and detached VLC launch (`FR-08`).
+
 ## [0.1.0] - 2026-11-17
 
 ### Added
