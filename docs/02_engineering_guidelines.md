@@ -2,25 +2,30 @@
 
 ## Technical Architecture
 
-The application follows a modular `src/` layout decoupling URL validation, layered configuration, stream resolution backends, process launching, and CLI orchestration.
+The application follows a modular `src/` layout decoupling localization, terminal UI presentation, URL validation, layered configuration, stream resolution backends, process launching, and CLI orchestration.
 
 ```mermaid
 flowchart TD
-    UserInput["User or Agent Input (URL or FILE_ID)"] --> Entry["drive-vlc CLI (cli.py)"]
-    Entry --> Config["load_config (env > ~/.config/drive-vlc/.env > repo/.env)"]
-    Entry --> Extract["extract_file_id (drive_url.py)"]
-    Extract --> Cascade{"resolve_drive_stream (resolver.py)"}
-    Cascade -->|1. Default| Http["resolve_via_http + _probe_direct_stream"]
-    Http -->|HTML confirm form| Form["_DownloadFormParser + cookieless probe"]
-    Form -->|Fails| YtDlp["resolve_via_yt_dlp (yt-dlp -j)"]
-    Http -->|Fails| YtDlp
-    YtDlp -->|Fails & API key present| Api["resolve_via_api (Drive API v3)"]
-    Http -->|Verified non-HTML| Output["stdout: Clean Direct URL"]
-    Form -->|Verified non-HTML| Output
-    YtDlp -->|Valid URL| Output
-    Api -->|Verified non-HTML| Output
-    Output -->|"Unless --url-only"| Vlc["launch_vlc (player.py, start_new_session=True)"]
+    UserInput["User or Agent Input (URL, FILE_ID, or omitted in TTY)"] --> Entry["drive-vlc CLI (cli.py)"]
+    Entry --> Locale["detect_system_language (i18n.py: --lang / Linux locale)"]
+    Locale --> UI["ConsolePresenter (ui.py on stderr) / logging fallback"]
+    UI --> Prompt["_resolve_input_url_or_id (CLI arg or TTY stderr prompt)"]
+    Prompt --> Config["load_config (env > ~/.config/drive-vlc/.env > repo/.env)"]
+    Config --> Extract["extract_drive_link (drive_url.py -> DriveLinkInfo)"]
+    Extract --> Cascade{"resolve_drive_stream (resolver.py + on_status)"}
+    Cascade -->|"1. Default"| Http["resolve_via_http + _probe_direct_stream"]
+    Http -->|"HTML confirm form"| Form["_DownloadFormParser + cookieless probe"]
+    Form -->|"Fails"| YtDlp["resolve_via_yt_dlp (yt-dlp -j)"]
+    Http -->|"Fails"| YtDlp
+    YtDlp -->|"Fails & API key present"| Api["resolve_via_api (Drive API v3)"]
+    Http -->|"Verified non-HTML"| Output["stdout: Clean Direct URL"]
+    Form -->|"Verified non-HTML"| Output
+    YtDlp -->|"Valid URL"| Output
+    Api -->|"Verified non-HTML"| Output
     Output -->|"If --copy"| Clip["copy_to_clipboard (wl-copy / xclip / xsel)"]
+    Output -->|"Unless --url-only"| Vlc["launch_vlc (player.py, start_new_session=True)"]
+    Vlc --> Summary["stderr: Localized summary panel (ui.py)"]
+    Output -->|"If --url-only"| Summary
 ```
 
 ### Module Responsibilities
@@ -32,7 +37,7 @@ flowchart TD
 - [`drive_url.py`](../src/drive_vlc/drive_url.py): Drive URL parser (`extract_drive_link`, `DriveLinkInfo`), legacy `resourcekey` extraction, folder blocker, and `FILE_ID` validator.
 - [`resolver.py`](../src/drive_vlc/resolver.py): Resolution backends (`http`, `yt-dlp`, `api`), HTML confirmation parser, viewer `<title>` fallback (`_fetch_view_page_title`), `Content-Disposition` UTF-8 decoder, and cookieless stream probe.
 - [`player.py`](../src/drive_vlc/player.py): Detached VLC subprocess launcher and Linux clipboard integration.
-- [`cli.py`](../src/drive_vlc/cli.py): `argparse` CLI parser, exit code handling, and stream separation (`stdout` vs `stderr`).
+- [`cli.py`](../src/drive_vlc/cli.py): `argparse` CLI parser, interactive TTY URL prompt (`_resolve_input_url_or_id`), `ConsolePresenter`/`logging` orchestration, exit code handling, and stream separation (`stdout` vs `stderr`).
 
 ---
 

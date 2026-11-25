@@ -92,18 +92,21 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 ## 🗺️ Workflow & Architecture
 ```mermaid
 graph TD
-    A["Input: Drive URL or FILE_ID"] --> B["cli.py: Parse args & load_config"]
-    B --> C["drive_url.py: extract_file_id"]
-    C --> D{"resolver.py: resolve_drive_stream"}
-    D -->|"1. http"| E["Direct HTTP + _DownloadFormParser"]
-    E -->|"Cookieless Range probe"| F{"Binary stream?"}
-    F -->|"Yes"| G["stdout: Direct Portable URL"]
-    F -->|"No"| H["2. yt-dlp -j fallback"]
-    H -->|"Fails & API key set"| I["3. Drive API v3 alt=media"]
-    H -->|"OK"| G
-    I -->|"OK"| G
-    G -->|"Default mode"| J["player.py: launch_vlc detached"]
-    G -->|"--copy"| K["Copy URL via wl-copy / xclip / xsel"]
+    A["Input: Drive URL, FILE_ID, or TTY prompt"] --> B["cli.py + i18n.py: Locale, args & ConsolePresenter (ui.py)"]
+    B --> C["config.py: load_config (env > ~/.config > .env)"]
+    C --> D["drive_url.py: extract_drive_link (FILE_ID + resourcekey)"]
+    D --> E{"resolver.py: resolve_drive_stream"}
+    E -->|"1. http"| F["Direct HTTP + _DownloadFormParser"]
+    F -->|"Cookieless Range probe"| G{"Binary stream?"}
+    G -->|"Yes"| H["stdout: Direct Portable URL"]
+    G -->|"No"| I["2. yt-dlp -j fallback"]
+    I -->|"Fails & API key set"| J["3. Drive API v3 alt=media"]
+    I -->|"OK"| H
+    J -->|"OK"| H
+    H -->|"--copy"| K["player.py: wl-copy / xclip / xsel"]
+    H -->|"Default mode"| L["player.py: launch_vlc detached"]
+    L --> M["stderr: Localized progress & summary (ui.py / logging)"]
+    H -->|"--url-only"| M
 ```
 
 ## 🤝 Contributing
