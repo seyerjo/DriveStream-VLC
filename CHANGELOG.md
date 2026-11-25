@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Layered configuration loader (`env` -> `~/.config/drive-vlc/.env` -> `.env`) and offline `unittest` suite (`26` tests).
 - Linux system-locale CLI localization (`i18n.py`) supporting English (`en` fallback) and Spanish (`es`) with `--lang` override.
 - Structured CLI event logging (`TIMESTAMP - LEVEL - MESSAGE`) to `stderr` and `$XDG_STATE_HOME/drive-vlc/drive-vlc.log`.
-- Public repository documentation (`README.md`, MIT `LICENSE`, `CODE_OF_CONDUCT.md`, `CONTRIBUTING_GUIDELINES.md`) and consolidated Memory Bank (`/docs/`).
+- Public repository documentation (`README.md`, MIT `LICENSE`, `CODE_OF_CONDUCT.md`, `CONTRIBUTING_GUIDELINES.md`) and consolidated project documentation (`/docs/`).
 - Standalone single-file Python `zipapp` release packaging (`.releases/v0.1.0/drive-vlc` + `SHA256SUMS`) and GitHub Releases installation instructions in `README.md`.
 
 ### Fixed

@@ -6,7 +6,7 @@ The application follows a modular `src/` layout decoupling localization, termina
 
 ```mermaid
 flowchart TD
-    UserInput["User or Agent Input (URL, FILE_ID, or omitted in TTY)"] --> Entry["drive-vlc CLI (cli.py)"]
+    UserInput["CLI Input (URL, FILE_ID, or omitted in TTY)"] --> Entry["drive-vlc CLI (cli.py)"]
     Entry --> Locale["detect_system_language (i18n.py: --lang / Linux locale)"]
     Locale --> UI["ConsolePresenter (ui.py on stderr) / logging fallback"]
     UI --> Prompt["_resolve_input_url_or_id (CLI arg or TTY stderr prompt)"]
@@ -44,7 +44,7 @@ flowchart TD
 ## Tech Stack
 
 - **Runtime:** Python `3.12.3` (standard library only: `urllib`, `html.parser`, `json`, `argparse`, `subprocess`, `dataclasses`, `pathlib`, `re`).
-  - *Justification:* Eliminates `.venv` activation friction when invoked globally from `~/.local/bin/drive-vlc` across arbitrary directories or agent shells.
+  - *Justification:* Eliminates `.venv` activation friction when invoked globally from `~/.local/bin/drive-vlc` across arbitrary directories or automated scripts.
 - **Media Player:** Native Linux VLC (`/usr/bin/vlc`), launched detached with `--network-caching=3000`.
 - **Optional Fallback Engine:** Local `yt-dlp` binary (`~/.local/bin/yt-dlp`) and optional Google Drive API v3 (`GOOGLE_DRIVE_API_KEY`).
 - **Testing:** Built-in `unittest` (`unittest.mock`) for deterministic offline verification (`PYTHONPATH=src python3 -m unittest discover -s tests -v`).
@@ -55,8 +55,7 @@ flowchart TD
 
 The following engineering and code style standards apply to this repository:
 
-1. **Language Separation:**
-   - Conversational chat responses must be in **Spanish (Spain)**.
+1. **Repository Language:**
    - All repository filenames, source code, identifiers, comments, docstrings, documentation, and configuration files must be in **English** (CLI user-facing output uses English base messages localized to the Linux system locale per `FEAT-05`).
 2. **Python Architecture & Typing:**
    - Keep `src/drive_vlc/` strictly in Python 3 standard library with zero external `pip` runtime dependencies so `~/.local/bin/drive-vlc` executes globally without requiring a virtual environment.
@@ -75,6 +74,6 @@ The following engineering and code style standards apply to this repository:
    - Never hardcode credentials or API keys; resolve secrets exclusively via environment variables or `.env` files.
 6. **Git Workflow & Isolation:**
    - Use dedicated branches (`feature/*`, `fix/*`, `refactor/*`, `chore/*`) and Conventional Commits (`feat(scope): ...`, `fix(scope): ...`, etc.).
-   - Never merge into `main` without explicit user confirmation; keep local `.env` credentials and personal IDE/agent tooling untracked via `.gitignore` / `.git/info/exclude`.
+   - Keep local `.env` credentials and personal IDE or developer tooling untracked via `.gitignore` / `.git/info/exclude`.
 7. **Verification Gate:**
    - Run `PYTHONPATH=src python3 -m unittest discover -s tests -v` after any Python code edit.
